@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- moocat: a cat-headed speech bubble, cata.co ocean on amber -->
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="#F2A65A"/>
+  <path d="M260 300 L360 380 H664 L764 300 V640 Q764 700 704 700 H470 L360 800 V700 H320 Q260 700 260 640Z"
+        fill="#1B3A4B" stroke="#1B3A4B" stroke-width="24" stroke-linejoin="round"/>
+  <circle cx="430" cy="530" r="34" fill="#F2A65A"/>
+  <circle cx="594" cy="530" r="34" fill="#F2A65A"/>
+  <path d="M490 600 Q512 625 534 600" fill="none" stroke="#F2A65A" stroke-width="18" stroke-linecap="round"/>
+</svg>

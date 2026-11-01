@@ -47,8 +47,8 @@ which case it's notarized too. Unsigned, it opens the first time with
 right-click > Open.
 
 Windows zips the app folder (`moocat.exe`, `launcher.exe`, `frontend\`);
-it needs the WebView2 runtime, which Windows 11 has. The icon is the
-default unless tinyjs.json gets `"windows": { "icon": "assets/icon.ico" }`.
+it needs the WebView2 runtime, which Windows 11 has. Every platform's icon
+is made from `assets/icon.png` (drawn in `assets/src/icon.svg`).
 
 ## The menu entry on Linux
 
