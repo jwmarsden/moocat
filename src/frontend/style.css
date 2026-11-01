@@ -37,6 +37,7 @@
   --bar-muted: #8a90a6;
   --bar-line: #2f334d;
   --bar-ctl: #24283b;      /* buttons and menus on a bar */
+  --bar-ctl-fg: #c0caf5;
   --bar-dim: #565f89;
   --bar-ok: #9ece6a;
   --bar-bad: #f7768e;
@@ -85,7 +86,8 @@
   --bar-fg: #E8F4F8;
   --bar-muted: #C8DDE6;
   --bar-line: #1B3A4B;
-  --bar-ctl: #2A5064;
+  --bar-ctl: #F6F2EC;
+  --bar-ctl-fg: #1B3A4B;
   --bar-dim: #9DB8C6;
   --bar-ok: #8fd694;
   --bar-bad: #ff9a8a;
@@ -132,7 +134,7 @@ header {
 }
 header button, header select { padding: 6px 16px; }
 header button:not(.primary), header select, #inputForm button:not(.primary), #editor footer button:not(.primary) {
-  background: var(--bar-ctl); border-color: var(--bar-line); color: var(--bar-fg);
+  background: var(--bar-ctl); border-color: var(--bar-line); color: var(--bar-ctl-fg);
 }
 header button:not(.primary):hover, header select:hover, #inputForm button:not(.primary):hover,
 #editor footer button:not(.primary):hover { border-color: var(--accent); }

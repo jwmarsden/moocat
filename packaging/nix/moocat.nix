@@ -12,6 +12,18 @@
 let
   root = ../..;
   info = lib.importJSON (root + "/tinyjs.json");
+  # A tinyjs app on Linux writes ~/.local/share/applications/<id>.desktop
+  # every time it runs, pointing at the copy that's running, and that file
+  # wins over this package's. Here the running copy is a store path, so after
+  # an upgrade the menu would keep opening the old version. This build's
+  # tinyjs leaves that out (no setting turns it off), so the menu entry below,
+  # which runs whatever bin/moocat is now, is the only one.
+  tinyjs' = tinyjs.overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      substituteInPlace $out/share/tinyjs/runtime/bridge.js \
+        --replace-fail 'if (IS_LINUX && haveInstancePipe) {' 'if (false) {'
+    '';
+  });
 in
 stdenv.mkDerivation {
   pname = "moocat";
@@ -23,10 +35,10 @@ stdenv.mkDerivation {
       let rel = lib.removePrefix (toString root + "/") (toString path); in
       !(lib.hasPrefix "dist" rel || lib.hasPrefix ".tinyjs" rel
         || lib.hasPrefix "node_modules" rel || lib.hasPrefix "packaging" rel
-        || lib.hasPrefix "test" rel);
+        || lib.hasPrefix "test" rel || lib.hasPrefix ".build" rel);
   };
 
-  nativeBuildInputs = [ tinyjs makeWrapper copyDesktopItems ];
+  nativeBuildInputs = [ tinyjs' makeWrapper copyDesktopItems ];
 
   # the binaries are tjs plus an appended bundle; strip would cut it off
   dontStrip = true;
@@ -51,10 +63,7 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  # The app also writes ~/.local/share/applications/app.moocat.desktop when it
-  # runs (pointing at its store path, so it goes stale after an upgrade until
-  # moocat is run again). This one has the same id, and the user's copy wins,
-  # so the menu shows one moocat either way.
+  # the menu entry: the app doesn't write its own here (see tinyjs' above)
   desktopItems = [
     (makeDesktopItem {
       name = info.id;
