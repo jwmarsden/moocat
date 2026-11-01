@@ -80,4 +80,12 @@ export const MARKUP = `
   </form>
 </dialog>
 
+<dialog id="askDialog">
+  <form method="dialog">
+    <h2 id="askTitle"></h2>
+    <p id="askText"></p>
+    <footer id="askButtons"></footer>
+  </form>
+</dialog>
+
 `;

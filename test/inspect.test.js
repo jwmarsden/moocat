@@ -36,28 +36,41 @@ eq(d.verbs[0].args, 'this none none', 'verb args');
 eq(d.description, ['A box.'], 'description');
 
 // the programmer probe: a programmer's answer is hidden, with its "=> 0"
+const tick = () => new Promise((r) => setTimeout(r, 0));
 const sent2 = [];
 const ins2 = new Inspector({ send: (l) => sent2.push(l) });
-const yes = ins2.probe();
-const ptag = /MOOCAT:(\w+) prog/.exec(sent2[0])?.[1];
+const yes = ins2.probe(); await tick();
+const ptag = /MOOCAT:(\w+) val/.exec(sent2[0])?.[1];
 eq(sent2[0].startsWith(';;notify(player, '), true, 'probe sent as an eval');
-eq(ins2.line(`MOOCAT:${ptag} prog 1`), true, "a programmer's answer is hidden");
+eq(ins2.line(`MOOCAT:${ptag} val 1`), true, "a programmer's answer is hidden");
 eq(ins2.line('=> 0'), true, 'and its result');
 eq(await yes, true, 'a programmer can program');
 // a non-programmer gets the MOO's huh, hidden: no
-const no = ins2.probe();
+const no = ins2.probe(); await tick();
 eq(ins2.line("I don't understand that."), true, "the MOO's huh is hidden");
 eq(await no, false, "a guest can't program");
 eq(ins2.line("I don't understand that."), false, 'a huh with no probe out is shown');
 // a wizard who isn't a programmer: player.wizard is 1
-const wiz = ins2.probe();
-const wtag = /MOOCAT:(\w+) prog/.exec(sent2.at(-1))[1];
-ins2.line(`MOOCAT:${wtag} prog 1`);
+const wiz = ins2.probe(); await tick();
+const wtag = /MOOCAT:(\w+) val/.exec(sent2.at(-1))[1];
+ins2.line(`MOOCAT:${wtag} val 1`);
 eq(await wiz, true, 'a wizard can');
-const zero = ins2.probe();
-const ztag = /MOOCAT:(\w+) prog/.exec(sent2.at(-1))[1];
-ins2.line(`MOOCAT:${ztag} prog 0`);
+const zero = ins2.probe(); await tick();
+const ztag = /MOOCAT:(\w+) val/.exec(sent2.at(-1))[1];
+ins2.line(`MOOCAT:${ztag} val 0`);
 eq(await zero, false, 'prog 0: no');
+// ask: any expression's value, errors as { err }, one question at a time
+const q1 = ins2.ask('player:edit_option("local")');
+const q2 = ins2.ask('player.name'); await tick();
+eq(sent2.at(-1).includes('`player:edit_option("local") ! ANY\''), true, 'asked with errors caught');
+const t1 = /MOOCAT:(\w+) val/.exec(sent2.at(-1))[1];
+ins2.line(`MOOCAT:${t1} val E_VERBNF`);
+eq(await q1, { err: 'E_VERBNF' }, 'an error comes back as { err }');
+await tick();
+const t2 = /MOOCAT:(\w+) val/.exec(sent2.at(-1))[1];
+eq(t2 !== t1, true, 'the second question waited for the first');
+ins2.line(`MOOCAT:${t2} val "rah"`);
+eq(await q2, 'rah', 'a string');
 
 console.log(failed === 0 ? 'all passed' : failed + ' failed');
 tjs.exit(failed ? 1 : 0);

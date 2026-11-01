@@ -291,6 +291,15 @@ export function createSession(host) {
       return inspector.inspect(obj);
     },
 
+    // Would @edit come here (MCP simpleedit, local editing on), or open the
+    // MOO's own editor? local: player:edit_option("local"), null if unknown.
+    async editCheck() {
+      if (!conn) throw new Error('not connected');
+      const local = mcp.canEdit ? await inspector.ask('player:edit_option("local")') : null;
+      return { mcp: stateOf().mcp,
+               local: local == null || local.err ? null : !(local === 0 || local === '' || (Array.isArray(local) && !local.length)) };
+    },
+
     closeEdit({ id }) {
       edits.delete(id);
       return true;

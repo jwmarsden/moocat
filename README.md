@@ -14,6 +14,9 @@ Speaks both local-editing protocols, ported from mudlet-mooedit's core.lua:
   once an MCP 2.1 session is up.
 
 On the MOO, turn local editing on once: `@edito +local`.
+Clicking a verb in an object tab checks first: if the MOO has no MCP
+simpleedit it offers the MOO's own editor; if your local editing is off it
+offers to turn it on (`@edito +local`) and edit. The answer is kept per session.
 
 ## Run
 

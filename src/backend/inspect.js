@@ -6,6 +6,7 @@
 //
 //   const ins = new Inspector({ send(line) })
 //   ins.inspect('#123') -> Promise<object>   (rejects on timeout)
+//   ins.ask(expr) -> Promise<value | null>   a MOO expression's value, hidden
 //   ins.probe() -> Promise<boolean>          can the player program?
 //   ins.line(text) -> true if the line was ours (don't show it)
 
@@ -115,23 +116,29 @@ export class Inspector {
     this.pending = new Map();  // tag -> { obj, data, resolve, reject, timer }
     this.swallow = new Set();  // after an "end": the eval's result lines still to hide
     this.swallowUntil = 0;
-    this.probing = null;       // { tag, done }
+    this.asking = null;        // { tag, done }: the question out
+    this.queue = Promise.resolve();
   }
 
-  // Whether the player can program (a programmer or a wizard), by one eval
-  // whose answer is hidden. A non-programmer's eval gets the MOO's "I don't
-  // understand that." instead, hidden too: false. No answer at all: false.
+  // A MOO expression's value (as parseLiteral gives it; an error raised is
+  // { err }), by one eval whose answer is hidden. A non-programmer's eval
+  // gets the MOO's "I don't understand that." instead, hidden too: null, as
+  // for no answer at all. One question at a time.
+  ask(expr) {
+    const next = this.queue.then(() => new Promise((resolve) => {
+      const tag = Math.random().toString(36).slice(2, 10);
+      const timer = setTimeout(() => done(null), PROBE_TIMEOUT);
+      const done = (v) => { clearTimeout(timer); this.asking = null; resolve(v); };
+      this.asking = { tag, done };
+      this.send(`;;notify(player, "${PREFIX}${tag} val " + toliteral(\`${expr} ! ANY'));`);
+    }));
+    this.queue = next;
+    return next;
+  }
+
+  // Whether the player can program (a programmer or a wizard).
   probe() {
-    if (this.probing) return this.probing.promise;
-    const tag = Math.random().toString(36).slice(2, 10);
-    const promise = new Promise((resolve) => {
-      const timer = setTimeout(() => done(false), PROBE_TIMEOUT);
-      const done = (v) => { clearTimeout(timer); this.probing = null; resolve(v); };
-      this.probing = { tag, done };
-    });
-    this.probing.promise = promise;
-    this.send(`;;notify(player, "${PREFIX}${tag} prog " + toliteral(player.programmer || player.wizard));`);
-    return promise;
+    return this.ask('player.programmer || player.wizard').then((v) => typeof v === 'number' && v !== 0);
   }
 
   inspect(obj) {
@@ -152,11 +159,13 @@ export class Inspector {
   }
 
   line(text) {
-    if (this.probing && HUH.test(text)) { this.probing.done(false); return true; }
-    if (this.probing && text.startsWith(`${PREFIX}${this.probing.tag} prog `)) {
+    if (this.asking && HUH.test(text)) { this.asking.done(null); return true; }
+    if (this.asking && text.startsWith(`${PREFIX}${this.asking.tag} val `)) {
       this.swallow = new Set(['result', 'used']);
       this.swallowUntil = Date.now() + 3000;
-      this.probing.done(text.slice(-2) !== ' 0');
+      let v = null;
+      try { v = parseLiteral(text.slice(`${PREFIX}${this.asking.tag} val `.length)); } catch {}
+      this.asking.done(v);
       return true;
     }
     if (!text.startsWith(PREFIX)) {

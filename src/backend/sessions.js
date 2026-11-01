@@ -12,7 +12,7 @@
 //   open()                     => sid  a new session, not connected yet
 //   connect({ world, sid? })   => sid  connects sid (again), or a new session
 //   disconnect({ sid })        close({ sid })  (disconnects and forgets it)
-//   send, upload, inspect, closeEdit   ({ sid, ... })
+//   send, upload, inspect, closeEdit, editCheck   ({ sid, ... })
 //   smudReady, smudSend        from a graphic's window: found by the window
 //   sessions()                 => [{ sid, connected, world, mcp }]
 import { createSession } from './core.js';
@@ -65,6 +65,7 @@ export function createSessions(host) {
     upload: forward('upload'),
     inspect: forward('inspect'),
     closeEdit: forward('closeEdit'),
+    editCheck: forward('editCheck'),
     smudReady: (params, app, meta) => ofWindow(meta?.window)?.api.smudReady(params, app, meta) ?? { id: null, msgs: [] },
     smudSend: (params, app, meta) => ofWindow(meta?.window)?.api.smudSend(params, app, meta) ?? false,
     sessions: () => [...sessions].map(([sid, s]) => ({ sid, ...s.api.state() })),

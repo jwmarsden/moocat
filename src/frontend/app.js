@@ -169,6 +169,7 @@ tiny.api.on('state', ({ sid, connected, world, mcp, prog }) => {
   s.connected = connected;
   s.mcp = mcp;
   s.prog = prog;
+  if (!connected) s.localEdit = false;  // a new login may differ
   if (world) s.world = world;
   renderTabs();
   if (s === current) $('send').disabled = !connected;
@@ -182,6 +183,11 @@ $('connect').addEventListener('click', () => {
 
 async function connectWorld(w) {
   store.set('world', w.name);
+  const live = sessions.find((x) => x.world === w.name && (x.connected || x.connecting));
+  if (live) {
+    activate(live, null);
+    return say(`Already ${live.connected ? 'connected' : 'connecting'} to ${w.name}.`);
+  }
   const dropped = (s) => s && !s.connected && s.world === w.name;
   const again = dropped(current) ? current : sessions.find(dropped);
   let s = again;
@@ -189,7 +195,9 @@ async function connectWorld(w) {
     s = newSession(await call('open'), w.name);
     activate(s, null);
   }
+  s.connecting = true;
   try { await call('connect', { world: w, sid: s.sid }); } catch {}  // the session says why
+  s.connecting = false;
   if (s !== current) activate(s, null);
   renderTabs();
   input.focus();
@@ -801,6 +809,59 @@ function renderObject(t) {
 // "l*ook examine" -> "look": a name @edit can find the verb by
 const verbName = (names) => names.split(' ')[0].replace('*', '');
 
+// A question with buttons: [{ label, value, primary }] -> the value chosen,
+// or null for Esc. text is HTML.
+function choose(title, text, buttons) {
+  const dlg = $('askDialog');
+  $('askTitle').textContent = title;
+  $('askText').innerHTML = text;
+  $('askButtons').innerHTML = buttons.map((b, i) =>
+    `<button value="${i}"${b.primary ? ' class="primary" autofocus' : ''}>${esc(b.label)}</button>`).join('');
+  return new Promise((resolve) => {
+    dlg.addEventListener('close', () => resolve(buttons[Number(dlg.returnValue)]?.value ?? null), { once: true });
+    dlg.returnValue = '';
+    dlg.showModal();
+  });
+}
+
+// @edit from the object tab: only into a tab here if the MOO does MCP
+// editing and the player's local editing is on; otherwise say so first,
+// offering to turn it on (@edito +local), as @edit would otherwise open the
+// MOO's own editor in the session.
+async function editVerb(s, ref) {
+  const edit = () => {
+    addLines(s, [{ text: '@edit ' + ref, kind: 'me' }]);
+    call('send', { sid: s.sid, line: '@edit ' + ref });
+  };
+  if (s.localEdit) return edit();
+  const MOO_EDITOR = { label: "Use the MOO's editor", value: 'moo' };
+  const CANCEL = { label: 'Cancel', value: null };
+  let check;
+  try { check = await call('editCheck', { sid: s.sid }); } catch { return; }
+  let choice;
+  if (check.mcp !== 'edit') {
+    choice = await choose('No local editing here',
+      `${esc(s.world)} hasn't offered MCP editing${check.mcp === 'none' ? ' (no MCP at all)' : ''}, so ` +
+      `<code>@edit ${esc(ref)}</code> would open the MOO's own editor in the session, not a tab here.`,
+      [CANCEL, MOO_EDITOR]);
+  } else if (check.local) {
+    s.localEdit = true;
+    return edit();
+  } else {
+    choice = await choose('Local editing is off',
+      (check.local === false ? 'Your local editing is off' : "moocat couldn't tell whether your local editing is on") +
+      `, so <code>@edit ${esc(ref)}</code> may open the MOO's own editor in the session. ` +
+      'Turn it on (<code>@edito +local</code>) to edit verbs in a tab here.',
+      [CANCEL, MOO_EDITOR, { label: 'Turn it on and edit', value: 'local', primary: true }]);
+  }
+  if (choice === 'local') {
+    addLines(s, [{ text: '@edito +local', kind: 'me' }]);
+    call('send', { sid: s.sid, line: '@edito +local' });
+    s.localEdit = true;
+  }
+  if (choice) edit();
+}
+
 $('objview').addEventListener('click', (ev) => {
   if (ev.target.id === 'objRefresh' && active?.kind === 'obj') {
     openObject(active.obj);
@@ -810,10 +871,7 @@ $('objview').addEventListener('click', (ev) => {
   if (!a) return;
   ev.preventDefault();
   const s = active?.session;
-  if (!s?.connected) return;
-  const cmd = '@edit ' + a.dataset.edit;
-  addLines(s, [{ text: cmd, kind: 'me' }]);
-  call('send', { sid: s.sid, line: cmd });
+  if (s?.connected) editVerb(s, a.dataset.edit);
 });
 
 // --- worlds dialog ------------------------------------------------------
@@ -878,6 +936,9 @@ $('worldSave').addEventListener('click', async () => {
   if (selIdx >= 0 && !form.reportValidity()) return;
   const bad = editing.find((w) => !w.name || !w.host || !(w.port > 0));
   if (bad) return tiny.dialog.alert('Each world needs a name, host and port.');
+  const key = (w) => w.name.toLowerCase();
+  const twice = editing.find((w, i) => editing.findIndex((x) => key(x) === key(w)) !== i);
+  if (twice) return tiny.dialog.alert(`There is already a world called "${twice.name}".`);
   worlds = editing;
   await call('saveWorlds', { worlds });
   if (worlds[selIdx]) store.set('world', worlds[selIdx].name);
