@@ -17,7 +17,7 @@ eq(tags('[:196]a[b::021]b'), '<span style="color:#ff0000">a</span><span style="c
 eq(tags('[255:128:0]o[b:0:0:64]p'), '<span style="color:#ff8000">o</span><span style="color:#ff8000;background:#000040">p</span>', '24-bit tags');
 eq(tags('[gray]g[null]'), '<span class="c0 b">g</span>', 'gray is bold black; null vanishes');
 eq(tags('[b:black] [:5] [rose] [1]'), '[b:black] [:5] [rose] [1]', 'not tags: left alone');
-eq(/^<span class="c\d">z<\/span>$/.test(tags('[random]z')), true, 'random is a colour');
+eq(/^<span class="c\d( b)?">z<\/span>$/.test(tags('[random]z')), true, 'random is a colour');
 eq(tags('[red][b:blue][inverse]x'), '<span class="c4 bg1">x</span>', 'inverse swaps palette colours');
 eq(tags('[inverse]x[normal]y'), '<span style="color:var(--bg);background:var(--fg)">x</span>y', 'inverse of the defaults');
 eq(tags('[255:0:0][inverse]x'), '<span style="color:var(--bg);background:#ff0000">x</span>', 'inverse of a 24-bit colour');
@@ -26,6 +26,8 @@ eq(tags('[blink]b[unblink]c'), '<span class="blink">b</span>c', 'blink and unbli
 eq(ansiToHtml('\x1b[5;31mb\x1b[0m'), '<span class="c1 blink">b</span>', 'blink escape');
 eq(colourText('[green]Bob #12', { links: false }), '<span class="c2">Bob #12</span>', 'no links inside a link');
 eq(colourText('[green]Bob #12'), '<span class="c2">Bob <a href="#" data-obj="#12">#12</a></span>', 'links by default');
+eq(ansiToHtml('see #12 at https://x.org', { objects: false }), 'see #12 at <a href="#" data-url="https://x.org">https://x.org</a>',
+   'objects: false leaves #12 as text, links the url');
 eq(plainText('[red]Ech[normal]leon\x1b[33554435m!'), 'Echleon!', 'plain text for tab labels');
 console.log(failed === 0 ? 'all passed' : failed + ' failed');
 tjs.exit(failed ? 1 : 0);

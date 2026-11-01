@@ -6,10 +6,14 @@
 //
 //   const ins = new Inspector({ send(line) })
 //   ins.inspect('#123') -> Promise<object>   (rejects on timeout)
+//   ins.probe() -> Promise<boolean>          can the player program?
 //   ins.line(text) -> true if the line was ours (don't show it)
 
 const PREFIX = 'MOOCAT:';
 const TIMEOUT = 15000;
+const PROBE_TIMEOUT = 8000;
+// what a MOO says to a non-programmer's eval (LambdaCore, ToastCore)
+const HUH = /^I don't understand that\.?$/;
 
 // A MOO literal (toliteral() output) -> JS: strings, numbers, lists as
 // arrays, objects as { obj: '#n' }, errors as { err: 'E_X' }. Maps
@@ -111,6 +115,23 @@ export class Inspector {
     this.pending = new Map();  // tag -> { obj, data, resolve, reject, timer }
     this.swallow = new Set();  // after an "end": the eval's result lines still to hide
     this.swallowUntil = 0;
+    this.probing = null;       // { tag, done }
+  }
+
+  // Whether the player can program (a programmer or a wizard), by one eval
+  // whose answer is hidden. A non-programmer's eval gets the MOO's "I don't
+  // understand that." instead, hidden too: false. No answer at all: false.
+  probe() {
+    if (this.probing) return this.probing.promise;
+    const tag = Math.random().toString(36).slice(2, 10);
+    const promise = new Promise((resolve) => {
+      const timer = setTimeout(() => done(false), PROBE_TIMEOUT);
+      const done = (v) => { clearTimeout(timer); this.probing = null; resolve(v); };
+      this.probing = { tag, done };
+    });
+    this.probing.promise = promise;
+    this.send(`;;notify(player, "${PREFIX}${tag} prog " + toliteral(player.programmer || player.wizard));`);
+    return promise;
   }
 
   inspect(obj) {
@@ -131,6 +152,13 @@ export class Inspector {
   }
 
   line(text) {
+    if (this.probing && HUH.test(text)) { this.probing.done(false); return true; }
+    if (this.probing && text.startsWith(`${PREFIX}${this.probing.tag} prog `)) {
+      this.swallow = new Set(['result', 'used']);
+      this.swallowUntil = Date.now() + 3000;
+      this.probing.done(text.slice(-2) !== ' 0');
+      return true;
+    }
     if (!text.startsWith(PREFIX)) {
       // the eval's "=> 0" and, with eval-time on, "[used n ticks, …]"
       const kind = text.startsWith('=> ') ? 'result' : /^\[used \d+ ticks/.test(text) ? 'used' : null;

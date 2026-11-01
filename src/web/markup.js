@@ -4,13 +4,16 @@ export const MARKUP = `
 
 <header>
   <select id="world" title="World"></select>
-  <button id="connect">Connect</button>
+  <button id="connect" title="Open the world in a tab of its own">Connect</button>
   <button id="worlds" title="Add and edit worlds">Worlds…</button>
-  <span id="status"><span class="dot"></span><span id="statusText">Not connected</span></span>
   <select id="theme" title="Colour theme"></select>
 </header>
 
-<nav id="tabs"></nav>
+<div id="tabbar">
+  <button id="tabsLeft" class="tabarrow" title="Tabs to the left" hidden>‹</button>
+  <nav id="tabs"></nav>
+  <button id="tabsRight" class="tabarrow" title="Tabs to the right" hidden>›</button>
+</div>
 
 <main id="main">
   <section id="session">

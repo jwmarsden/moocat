@@ -24,11 +24,25 @@ tinyjs itself is packaged in ~/nix-config (nix/tinyjs.nix).
 
 ## Use
 
-- Tabs: the first is the session (named after the world, with a count of
-  lines that came in while you were elsewhere); each `@edit` opens another.
+- Sessions: Connect opens the chosen world in a tab of its own, so several
+  MOOs (or the same one twice) can be open at once. The tab is named after
+  the world, with a dot (green when connected; hover for MCP) and a count of
+  lines that came in while you were elsewhere. A session whose connection
+  drops stays, grey: Connect with its world picked connects it again.
+  Closing its tab disconnects.
+- Commands, typed in the input and never sent to the MOO: `/help` lists
+  them. `/close` (this session; the last one only disconnects),
+  `/disconnect`, `/connect [world]` (again, or a world in a new tab),
+  `/close-tabs` (every edit and object tab), `/enable` / `/disable` (object
+  numbers as links in this session, whatever the MOO said), `/clear`,
+  `/theme [name]`, `/worlds`. `//text` sends `/text` to the MOO.
+- Tabs: each `@edit` opens one, just to the right of its session's tab, so
+  it's clear which MOO it belongs to; object tabs likewise.
   Ctrl+Tab / Ctrl+PageDown and Ctrl+Shift+Tab / Ctrl+PageUp move between them,
-  Alt+1…9 picks one, middle-click or Ctrl+W closes an edit.
-- Object numbers (`#1024`) in the output are links: clicking one opens the
+  Alt+1…9 picks one, middle-click or Ctrl+W closes one.
+- Object numbers (`#1024`) in the output are links once the MOO says you
+  can program (moocat asks it, hidden, after you log in; never for guests),
+  or after `/enable`: clicking one opens the
   object in its own tab, with its flags, parent chain, owner, location,
   description, and its properties and verbs grouped by the ancestor that
   defines them (its own open, inherited folded). Values are cut at 300
@@ -60,7 +74,9 @@ tinyjs itself is packaged in ~/nix-config (nix/tinyjs.nix).
     src/backend/telnet.js  bytes -> lines, telnet options refused
     src/backend/inspect.js reading an object for its tab (eval + MOO literals)
     src/backend/smud.js    SMud graphics lines and macros (no I/O)
-    src/backend/main.js    the connection, worlds, the api the page calls
+    src/backend/core.js    one session: a connection, MCP, inspecting, SMud
+    src/backend/sessions.js several sessions at once, each event and call by sid
+    src/backend/main.js    the connections, worlds, the api the page calls
     src/frontend/          the page: app.js, moo.js (highlighter), ansi.js,
                            canvas.js + smud.html/smud-win.js (SMud graphics
                            and their windows)
@@ -75,6 +91,8 @@ tinyjs itself is packaged in ~/nix-config (nix/tinyjs.nix).
     $tjs run test/pixels.test.js
     $tjs run test/inspect.e2e.js 127.0.0.1 17777 "connect wizard" '#2'
     $tjs run test/e2e.js 127.0.0.1 17777 "connect wizard"
+    $tjs run test/core.e2e.js 17777
+    $tjs run test/sessions.e2e.js 17777
 
 `e2e` needs a MOO: a throwaway ToastCore with
 `docker run -d --name moo-mcp-test -p 127.0.0.1:17777:7777 wiredwizard/toaststunt:latest`.

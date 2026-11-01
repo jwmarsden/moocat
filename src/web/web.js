@@ -1,4 +1,4 @@
-// moocat in a web page: the same session (backend/core.js) and the same page
+// moocat in a web page: the same sessions (backend/sessions.js) and the same page
 // (frontend/app.js), with the tinyjs bridge played by this file. A browser
 // can't open a telnet connection itself, so the host page supplies open(world),
 // a WebSocket to a relay that passes bytes to the MOO and back. SMud graphics
@@ -11,7 +11,7 @@
 // (no editing here). open(world) => a WebSocket, open, binaryType arraybuffer.
 // hint: a line to show under the MOO's welcome (how to log in), if any.
 // themes: the colour themes to offer, the default first (see app.js).
-import { createSession } from '../backend/core.js';
+import { createSessions } from '../backend/sessions.js';
 import { SmudCanvas } from '../frontend/canvas.js';
 import { MARKUP } from './markup.js';
 
@@ -20,10 +20,10 @@ export async function startWeb({ root, worlds, open, hint = '', themes }) {
   const push = (event, data) => { for (const fn of listeners.get(event) ?? []) fn(data); };
   const panels = new Map();     // window id -> panel
 
-  const session = createSession({
+  const sessions = createSessions({
     push,
 
-    async connect(world) {
+    async connect(world, { push }) {
       const ws = await open(world);
       ws.binaryType = 'arraybuffer';
       let ended = false;
@@ -60,7 +60,7 @@ export async function startWeb({ root, worlds, open, hint = '', themes }) {
   });
 
   const api = {
-    ...session.api,
+    ...sessions.api,
     worlds: () => worlds,
     saveWorlds: () => { throw new Error('worlds are fixed here'); },
   };
@@ -123,7 +123,7 @@ export async function startWeb({ root, worlds, open, hint = '', themes }) {
           const w = Number(m.xsize) || 100, h = Number(m.ysize) || 100;
           if (canvas) { canvas.resize(w, h); canvas.rename(m.name || canvas.name); continue; }
           canvas = new SmudCanvas({ id: m.id, width: w, height: h, name: m.name,
-                                    send: (pairs) => session.api.smudSend({ pairs }) });
+                                    send: (pairs) => sessions.api.smudSend({ pairs }, null, { window: win }) });
           canvas.onrename = (name) => { titleEl.textContent = name || 'SMud graphic'; };
           canvas.onresize = (cw, ch) => size(cw, ch);
           body.append(canvas.el);
@@ -133,12 +133,12 @@ export async function startWeb({ root, worlds, open, hint = '', themes }) {
     };
     el.querySelector('header button').addEventListener('click', () => {
       panel.remove();
-      session.onWindowClosed(win);
+      sessions.onWindowClosed(win);
     });
     panels.set(win, panel);
     root.append(el);
     // as smud-win.js does once its page has loaded: what it missed
-    const { msgs } = session.api.smudReady(null, null, { window: win });
+    const { msgs } = sessions.api.smudReady(null, null, { window: win });
     panel.handle(msgs);
   }
 

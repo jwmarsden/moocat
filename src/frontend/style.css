@@ -130,21 +130,17 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 /* header */
 header {
   display: flex; align-items: center; gap: 6px;
-  padding: 8px 10px; background: var(--bar); color: var(--bar-fg); border-bottom: 1px solid var(--bar-line);
+  padding: 5px 8px; background: var(--bar); color: var(--bar-fg); border-bottom: 1px solid var(--bar-line);
 }
-header button, header select { padding: 6px 16px; }
+header button, header select { padding: 2px 10px; font-size: 12px; }
 header button:not(.primary), header select, #inputForm button:not(.primary), #editor footer button:not(.primary) {
   background: var(--bar-ctl); border-color: var(--bar-line); color: var(--bar-ctl-fg);
 }
 header button:not(.primary):hover, header select:hover, #inputForm button:not(.primary):hover,
 #editor footer button:not(.primary):hover { border-color: var(--accent); }
 header option { background: var(--bg); color: var(--fg); }
-#world { min-width: 160px; }
-#status { display: flex; align-items: center; gap: 6px; margin-left: 6px; color: var(--bar-muted); }
-#theme { margin-left: auto; padding: 4px 10px; }
-#status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
-#status.on .dot { background: var(--green); }
-#status.edit .dot { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+#world { min-width: 110px; }
+#theme { margin-left: auto; padding: 2px 8px; }
 
 /* session */
 main { flex: 1; display: flex; min-height: 0; }
@@ -192,16 +188,34 @@ main { flex: 1; display: flex; min-height: 0; }
 .bg12 { background: var(--ansi12); } .bg13 { background: var(--ansi13); } .bg14 { background: var(--ansi14); } .bg15 { background: var(--ansi15); }
 
 /* tabs: the session, then one per edit */
-#tabs {
-  display: flex; gap: 2px; padding: 6px 8px 0; overflow-x: auto; flex: none;
+/* the tab strip scrolls sideways with no scrollbar: an arrow shows at each
+   end that has tabs past it (app.js) */
+#tabbar {
+  display: flex; align-items: stretch; flex: none;
   background: var(--bg-dark); border-bottom: 1px solid var(--line);
 }
+#tabs {
+  display: flex; gap: 2px; padding: 6px 8px 0; overflow-x: auto; flex: 1; min-width: 0;
+  scrollbar-width: none;
+}
+#tabs::-webkit-scrollbar { display: none; }
+.tabarrow {
+  flex: none; width: 24px; padding: 0; margin: 6px 0 0; border: 0; border-radius: 6px 6px 0 0;
+  background: var(--bg-hl); color: var(--fg); font-size: 16px; line-height: 1;
+}
+.tabarrow:hover { background: var(--hl); }
 #tabs .tab {
   display: flex; align-items: center; gap: 6px; flex: none; max-width: 260px;
   padding: 6px 8px 6px 14px; border-radius: 8px 8px 0 0; cursor: pointer;
   background: var(--bg); color: var(--muted); font-family: var(--mono); font-size: 12px;
 }
-#tabs .tab.session { padding-right: 14px; font-family: var(--ui); font-weight: 600; }
+#tabs .tab.session { font-family: var(--ui); font-weight: 600; }
+/* a session's connection: grey, green when connected, glowing when MCP edits */
+#tabs .tab .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--dim); }
+#tabs .tab.on .dot { background: var(--green); }
+#tabs .tab.edit .dot { box-shadow: 0 0 5px var(--green); }
+/* a session's own tabs sit after it; a gap before the next session */
+#tabs .tab.session:not(:first-child) { margin-left: 8px; }
 #tabs .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tabs .tab:hover { color: var(--fg); }
 #tabs .tab.active { background: var(--hl); color: var(--fg); box-shadow: inset 0 2px var(--accent); }

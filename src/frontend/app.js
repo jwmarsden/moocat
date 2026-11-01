@@ -32,61 +32,111 @@ $('theme').addEventListener('change', (ev) => setTheme(ev.target.value));
 // (it was called moomoo-theme before the rename)
 setTheme(store.get('moocat-theme', store.get('moomoo-theme', themes[0])), false);
 
-// --- output -------------------------------------------------------------
+
+// --- sessions -------------------------------------------------------------
+// One per MOO connection, each with a tab and its own output; its edit and
+// object tabs sit just to its right. `current` is the session showing (or
+// null, before any), `active` the tab of it that's showing: null for the
+// session itself. A session stays when its connection drops, to connect again.
+
+const sessions = [];  // { sid, world, connected, mcp, prog, links, el, partial, follow, unseen, missed, scroll, tabs }
+// Object numbers are links once the MOO says the player can program (prog,
+// from core.js), unless /enable or /disable said otherwise (links).
+const objLinks = (s) => !!(s.links ?? s.prog);
+let current = null;
+let active = null;
 
 const out = $('out');
-let resultWatch = null;  // { id, until, lines } after an upload: the MOO's answer
+let resultWatch = null;  // { tab, until, lines } after an upload: the MOO's answer
+
+function newSession(sid, world) {
+  const s = { sid, world, connected: false, mcp: 'none', prog: false, links: null, el: document.createElement('div'), partial: '',
+              follow: true, unseen: 0, missed: 0, scroll: 0, tabs: [] };
+  sessions.push(s);
+  return s;
+}
+const bySid = (sid) => sessions.find((s) => s.sid === sid);
+
+// Before any session: what to do, in the output area.
+const home = { el: document.createElement('div'), follow: true, unseen: 0, scroll: 0, partial: '' };
+const shown = () => current ?? home;
 
 // Output follows new lines unless you've scrolled up; then a button counts
 // what came in below. Following is set only by scrolling, so a resize (the
 // prompt line, a taller input, the editor opening) never unpins it.
-let follow = true;
-let unseen = 0;
-
 function atBottom() {
   return out.scrollHeight - out.scrollTop - out.clientHeight < 8;
 }
 
+function showJump(s) {
+  $('jump').textContent = `↓ ${s.unseen} new line${s.unseen === 1 ? '' : 's'}`;
+  $('jump').hidden = !s.unseen;
+}
+
 function toBottom() {
-  follow = true;
+  const s = shown();
+  s.follow = true;
   out.scrollTop = out.scrollHeight;
-  unseen = 0;
-  $('jump').hidden = true;
+  s.unseen = 0;
+  showJump(s);
 }
 
 out.addEventListener('scroll', () => {
-  follow = atBottom();
-  if (follow && unseen) toBottom();
+  const s = shown();
+  s.follow = atBottom();
+  if (s.follow && s.unseen) toBottom();
 });
-new ResizeObserver(() => { if (follow) out.scrollTop = out.scrollHeight; }).observe(out);
+new ResizeObserver(() => { if (shown().follow) out.scrollTop = out.scrollHeight; }).observe(out);
 $('jump').addEventListener('click', toBottom);
 
-function addLines(lines) {
+// Lines to a session (or to home, before any). Object numbers are links
+// only once the MOO has said the player can program (core.js asks).
+function addLines(s, lines) {
+  s ??= home;
   const frag = document.createDocumentFragment();
   for (const { text, kind } of lines) {
     const div = document.createElement('div');
     if (kind) div.className = kind;
-    div.innerHTML = kind === 'me' ? esc(text) : ansiToHtml(text);
+    div.innerHTML = kind === 'me' ? esc(text) : ansiToHtml(text, { objects: objLinks(s) });
     frag.append(div);
   }
-  out.append(frag);
-  while (out.childElementCount > MAX_LINES) out.firstElementChild.remove();
-  if (follow) {
-    out.scrollTop = out.scrollHeight;
+  s.el.append(frag);
+  while (s.el.childElementCount > MAX_LINES) s.el.firstElementChild.remove();
+  if (s === shown()) {
+    if (s.follow) out.scrollTop = out.scrollHeight;
+    else { s.unseen += lines.length; showJump(s); }
+  } else if (s.follow) {
+    s.scroll = Infinity;
   } else {
-    unseen += lines.length;
-    $('jump').textContent = `↓ ${unseen} new line${unseen === 1 ? '' : 's'}`;
-    $('jump').hidden = false;
+    s.unseen += lines.length;
   }
-  if (active) {
-    missed += lines.filter((l) => l.kind !== 'me').length;
+  if (s !== home && (s !== current || active)) {
+    s.missed += lines.filter((l) => l.kind !== 'me').length;
     renderTabs();
   }
-  if (resultWatch) watchResult(lines);
+  if (resultWatch?.tab.session === s) watchResult(lines);
 }
 
-tiny.api.on('out', ({ lines }) => addLines(lines));
-tiny.api.on('partial', ({ text }) => { $('partial').innerHTML = ansiToHtml(text); });
+// Show a session's output (or home's) in the output area.
+function showOutput(s) {
+  const was = out.firstElementChild;
+  if (was === s.el) return;
+  const prev = was === home.el ? home : sessions.find((x) => x.el === was);
+  if (prev) prev.scroll = out.scrollTop;
+  out.replaceChildren(s.el);
+  out.scrollTop = s.follow ? out.scrollHeight : s.scroll;
+  showJump(s);
+  $('partial').innerHTML = ansiToHtml(s.partial, { objects: objLinks(s) });
+}
+
+// (a session's closed tab can still hear its own "Disconnected": dropped)
+tiny.api.on('out', ({ sid, lines }) => { if (bySid(sid)) addLines(bySid(sid), lines); });
+tiny.api.on('partial', ({ sid, text }) => {
+  const s = bySid(sid);
+  if (!s) return;
+  s.partial = text;
+  if (s === shown()) $('partial').innerHTML = ansiToHtml(text, { objects: objLinks(s) });
+});
 
 // links open in the browser, object numbers in an object tab (anywhere)
 document.addEventListener('click', (ev) => {
@@ -97,10 +147,11 @@ document.addEventListener('click', (ev) => {
   else openObject(a.dataset.obj);
 });
 
-// --- connection ---------------------------------------------------------
+// --- connecting -----------------------------------------------------------
+// Connect opens the chosen world in a session tab: one of its own that has
+// dropped (the one showing first), or a new one. Closing the tab disconnects.
 
 let worlds = [];
-let connected = false;
 
 function renderWorlds() {
   const sel = $('world');
@@ -108,29 +159,62 @@ function renderWorlds() {
   sel.value = String(Math.max(0, worlds.findIndex((w) => w.name === store.get('world', ''))));
 }
 
-function setState({ connected: c, world, mcp }) {
-  connected = c;
-  $('connect').textContent = c ? 'Disconnect' : 'Connect';
-  $('world').disabled = c;
-  const st = $('status');
-  st.className = !c ? '' : mcp === 'edit' ? 'edit' : 'on';
-  $('statusText').textContent = !c ? 'Not connected'
-    : world + (mcp === 'edit' ? ' · MCP editing' : mcp === 'up' ? ' · MCP' : '');
-  tiny.win.setTitle(c ? `moocat — ${world}` : 'moocat');
-  worldName = c ? world : null;
-  renderTabs();
-  $('send').disabled = !c;
+function setTitle() {
+  tiny.win.setTitle(current ? `moocat — ${current.world}` : 'moocat');
 }
-tiny.api.on('state', setState);
 
-$('connect').addEventListener('click', async () => {
-  if (connected) return call('disconnect');
+tiny.api.on('state', ({ sid, connected, world, mcp, prog }) => {
+  const s = bySid(sid);
+  if (!s) return;
+  s.connected = connected;
+  s.mcp = mcp;
+  s.prog = prog;
+  if (world) s.world = world;
+  renderTabs();
+  if (s === current) $('send').disabled = !connected;
+});
+
+$('connect').addEventListener('click', () => {
   const w = worlds[Number($('world').value)];
   if (!w) return openWorlds();
-  store.set('world', w.name);
-  try { await call('connect', { world: w }); } catch {}
-  $('input').focus();
+  connectWorld(w);
 });
+
+async function connectWorld(w) {
+  store.set('world', w.name);
+  const dropped = (s) => s && !s.connected && s.world === w.name;
+  const again = dropped(current) ? current : sessions.find(dropped);
+  let s = again;
+  if (!s) {
+    s = newSession(await call('open'), w.name);
+    activate(s, null);
+  }
+  try { await call('connect', { world: w, sid: s.sid }); } catch {}  // the session says why
+  if (s !== current) activate(s, null);
+  renderTabs();
+  input.focus();
+}
+
+// The last one stays (to leave, close moocat).
+// typed: by /close, so only unsent edits are asked about
+async function closeSession(s, typed = false) {
+  if (sessions.length < 2) return;
+  const unsent = s.tabs.filter(dirty).length;
+  if (((s.connected && !typed) || unsent) && !confirm(
+    `Close ${s.world}${s.connected ? ' and disconnect' : ''}?` +
+    (unsent ? ` ${unsent} edit${unsent === 1 ? ' has' : 's have'} unsent changes.` : ''))) return;
+  if (s.sid != null) call('close', { sid: s.sid }).catch(() => {});
+  const i = sessions.indexOf(s);
+  sessions.splice(i, 1);
+  if (resultWatch?.tab.session === s) resultWatch = null;
+  if (s === current) {
+    current = null;
+    active = null;
+    activate(sessions[Math.min(i, sessions.length - 1)] ?? null, null);
+  } else {
+    renderTabs();
+  }
+}
 
 // --- input --------------------------------------------------------------
 
@@ -149,7 +233,7 @@ function fitInput() {
 }
 
 function sendInput() {
-  const text = input.value;
+  let text = input.value;
   input.value = '';
   fitInput();
   if (text.trim() && !LOGIN.test(text)) {
@@ -158,14 +242,18 @@ function sendInput() {
     store.set('history', history);
   }
   histPos = history.length;
-  if (!connected) {
-    addLines([{ text: 'Not connected.', kind: 'sys' }]);
+  const s = current;
+  // /commands are moocat's; // sends a line starting with / to the MOO
+  if (/^\/(?!\/)/.test(text)) { command(text.trim()); return; }
+  if (text.startsWith('//')) text = text.slice(1);
+  if (!s?.connected) {
+    addLines(s, [{ text: s ? 'Not connected: Connect to connect again.' : 'Not connected: pick a world and Connect.', kind: 'sys' }]);
     return;
   }
   const lines = text.split('\n');
   toBottom();
-  addLines(lines.map((l) => ({ text: l.replace(LOGIN, '$1********'), kind: 'me' })));
-  for (const line of lines) call('send', { line });
+  addLines(s, lines.map((l) => ({ text: l.replace(LOGIN, '$1********'), kind: 'me' })));
+  for (const line of lines) call('send', { sid: s.sid, line });
 }
 
 input.addEventListener('input', fitInput);
@@ -191,34 +279,171 @@ input.addEventListener('keydown', (ev) => {
   }
 });
 
+// --- /commands ------------------------------------------------------------
+// Typed in the input, never sent to the MOO (// sends a line starting with /).
+
+const COMMANDS = {
+  help: ['', 'these commands', () => say(Object.entries(COMMANDS).map(([n, [args, what]]) =>
+    `/${n}${args ? ' ' + args : ''} — ${what}`).concat('//text — send /text to the MOO')) ],
+  clear: ['', "clear this session's output", (s) => { (s ?? home).el.replaceChildren(); toBottom(); }],
+  close: ['', 'close this session and disconnect (the last one only disconnects)', (s) => {
+    if (!s) return say('No session.');
+    if (sessions.length > 1) return closeSession(s, true);
+    if (s.connected) call('disconnect', { sid: s.sid });
+    else say('Not connected (the last session stays open).');
+  }],
+  disconnect: ['', 'disconnect, keeping the tab', (s) => {
+    if (!s?.connected) return say('Not connected.');
+    call('disconnect', { sid: s.sid });
+  }],
+  connect: ['[world]', 'connect this session again, or open a world in a new tab', (s, arg) => {
+    if (!arg) {
+      if (!s) return say('Which world? ' + worldNames());
+      if (s.connected) return say(`Already connected to ${s.world}.`);
+      arg = s.world;
+    }
+    const w = findWorld(arg);
+    if (!w) return say(`No world "${arg}". ` + worldNames());
+    connectWorld(w);
+  }],
+  'close-tabs': ['', 'close every edit and object tab', () => {
+    const all = sessions.flatMap((x) => x.tabs);
+    if (!all.length) return say('No tabs to close.');
+    const unsent = all.filter(dirty).length;
+    if (unsent && !confirm(`Close all tabs? ${unsent} edit${unsent === 1 ? ' has' : 's have'} unsent changes.`)) return;
+    for (const x of sessions) {
+      for (const t of x.tabs) if (t.kind === 'edit') call('closeEdit', { sid: x.sid, id: t.id }).catch(() => {});
+      x.tabs = [];
+    }
+    activate(current, null);
+    say(`Closed ${all.length} tab${all.length === 1 ? '' : 's'}.`);
+  }],
+  enable: ['', 'make #object numbers links in this session', (s) => setLinks(s, true)],
+  disable: ['', 'stop making #object numbers links in this session', (s) => setLinks(s, false)],
+  theme: ['[name]', 'switch colour theme', (s, arg) => {
+    const t = arg && themes.find((x) => x === arg.toLowerCase() || THEME_NAMES[x].toLowerCase() === arg.toLowerCase());
+    if (!t) return say((arg ? `No theme "${arg}". ` : '') + 'Themes: ' + themes.map((x) => THEME_NAMES[x]).join(', '));
+    setTheme(t);
+  }],
+  worlds: ['', 'add and edit worlds', () => {
+    if ($('worlds').offsetParent === null) return say("Worlds are fixed here.");
+    openWorlds();
+  }],
+};
+
+// moocat's own word, in the session showing
+const say = (text) => addLines(current, [].concat(text).map((t) => ({ text: t, kind: 'sys' })));
+const worldNames = () => 'Worlds: ' + worlds.map((w) => w.name).join(', ');
+const findWorld = (name) => worlds.find((w) => w.name.toLowerCase() === name.toLowerCase())
+  ?? worlds.find((w) => w.name.toLowerCase().startsWith(name.toLowerCase()));
+
+function command(text) {
+  const [, name, arg] = /^\/(\S*)\s*(.*)$/.exec(text);
+  addLines(current, [{ text, kind: 'me' }]);
+  const c = COMMANDS[name.toLowerCase()];
+  if (!c) return say(`Unknown command /${name}: /help lists them.`);
+  c[2](current, arg.trim());
+}
+
+// /enable, /disable: the session's lines so far too
+function setLinks(s, on) {
+  if (!s) return say('No session.');
+  s.links = on;
+  for (const line of s.el.children) if (!line.classList.contains('me')) relink(line, on);
+  say(on ? 'Object numbers are links in this session.' : 'Object numbers are plain text in this session.');
+}
+
+const OBJ_RE = /(?<![\w#$])#\d+\b/g;
+function relink(el, on) {
+  if (!on) {
+    for (const a of el.querySelectorAll('a[data-obj]')) a.replaceWith(a.textContent);
+    el.normalize();
+    return;
+  }
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walker.nextNode()) if (!walker.currentNode.parentElement.closest('a')) texts.push(walker.currentNode);
+  for (const node of texts) {
+    const t = node.textContent;
+    if (!OBJ_RE.test(t)) continue;
+    OBJ_RE.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of t.matchAll(OBJ_RE)) {
+      frag.append(t.slice(last, m.index));
+      const a = document.createElement('a');
+      a.href = '#';
+      a.dataset.obj = m[0];
+      a.textContent = m[0];
+      frag.append(a);
+      last = m.index + m[0].length;
+    }
+    frag.append(t.slice(last));
+    node.replaceWith(frag);
+  }
+}
+
 // --- tabs ---------------------------------------------------------------
-// Tab 1 is the session; each @edit opens another (kind 'edit'), and each
-// object clicked one more (kind 'obj'). `active` is the tab showing, or null
-// for the session. Tab keys are strings: an edit's id, or the object number.
-// (SMud graphics open windows of their own: smud-win.js.)
+// Each session's tab, then its own tabs: each @edit opens one (kind 'edit'),
+// and each object clicked one (kind 'obj'). Their keys are strings: an
+// edit's id, or the object number. (SMud graphics open windows of their own:
+// smud-win.js.)
 
 const ta = $('text');
 const hl = $('hl');
 const scroller = $('codeScroll');
-const tabs = [];       // edit: { kind, key, id, name, reference, type, protocol, orig, text, sel, scroll, bad, result }
-                       // obj:  { kind, key, obj, name, data, error, scroll }
-let active = null;
-let missed = 0;        // session lines that came in while an edit tab was showing
-let worldName = null;
+// edit: { kind, key, session, id, name, reference, type, protocol, orig, text, sel, scroll, bad, result }
+// obj:  { kind, key, session, obj, name, data, error, scroll }
 
 const isCode = (t) => t.type === 'moo-code';
 const dirty = (t) => t.kind === 'edit' && t.text !== t.orig;
 
-function renderTabs() {
-  const session = `<div class="tab session${active ? '' : ' active'}" data-key="" title="Alt+1">` +
-    `<span class="name">${esc(worldName ?? 'Session')}</span>` +
-    (missed ? `<span class="badge">${missed > 999 ? '999+' : missed}</span>` : '') + '</div>';
-  $('tabs').innerHTML = session + tabs.map((t, i) =>
-    `<div class="tab ${t.kind}${t === active ? ' active' : ''}${dirty(t) ? ' dirty' : ''}" data-key="${esc(t.key)}"` +
-    ` title="${esc(t.kind === 'obj' ? t.obj : t.reference)}${i < 8 ? ` (Alt+${i + 2})` : ''}">` +
-    `<span class="name">${esc(t.name)}</span><button class="x" title="Close (Ctrl+W)">×</button></div>`).join('');
-  $('tabs').querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+// every tab in order, as [session, tab or null]
+const allTabs = () => sessions.flatMap((s) => [[s, null], ...s.tabs.map((t) => [s, t])]);
+
+function sessionTitle(s) {
+  return !s.connected ? `${s.world}: not connected (Connect to connect again)`
+    : `Connected to ${s.world}` + (s.mcp === 'edit' ? ' · MCP editing' : s.mcp === 'up' ? ' · MCP' : '');
 }
+
+function renderTabs() {
+  const keys = new Map(allTabs().map(([s, t], i) => [t ?? s, i < 9 ? ` (Alt+${i + 1})` : '']));
+  $('tabs').innerHTML = sessions.map((s) =>
+    `<div class="tab session${s === current && !active ? ' active' : ''}${s.connected ? ' on' : ''}${s.mcp === 'edit' ? ' edit' : ''}"` +
+    ` data-sid="${s.sid ?? ''}" data-key="" title="${esc(sessionTitle(s) + keys.get(s))}">` +
+    `<span class="dot"></span><span class="name">${esc(s.world)}</span>` +
+    (s.missed ? `<span class="badge">${s.missed > 999 ? '999+' : s.missed}</span>` : '') +
+    (sessions.length > 1 ? `<button class="x" title="Close and disconnect">×</button>` : '') + '</div>' +
+    s.tabs.map((t) =>
+      `<div class="tab ${t.kind}${t === active ? ' active' : ''}${dirty(t) ? ' dirty' : ''}" data-sid="${s.sid ?? ''}" data-key="${esc(t.key)}"` +
+      ` title="${esc((t.kind === 'obj' ? t.obj : t.reference) + ' on ' + s.world + keys.get(t))}">` +
+      `<span class="name">${esc(t.name)}</span><button class="x" title="Close (Ctrl+W)">×</button></div>`).join('')).join('');
+  $('tabs').querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  tabArrows();
+  setTitle();
+}
+
+// No scrollbar on the tab strip: an arrow at each end with tabs past it
+// slides it along, and so does the wheel.
+const strip = $('tabs');
+// (within the strip's own end padding counts as at the end)
+function tabArrows() {
+  $('tabsLeft').hidden = strip.scrollLeft <= 10;
+  $('tabsRight').hidden = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 10;
+}
+function slide(dir) {
+  strip.scrollBy({ left: dir * strip.clientWidth * 0.7, behavior: 'smooth' });
+  setTimeout(tabArrows, 400);  // after the slide, should no scroll event come
+}
+$('tabsLeft').addEventListener('click', () => slide(-1));
+$('tabsRight').addEventListener('click', () => slide(1));
+strip.addEventListener('scroll', tabArrows);
+strip.addEventListener('wheel', (ev) => {
+  if (!ev.deltaY || ev.deltaX) return;  // a sideways wheel or touchpad scrolls by itself
+  strip.scrollLeft += ev.deltaY;
+  ev.preventDefault();
+}, { passive: false });
+new ResizeObserver(tabArrows).observe(strip);
 
 function stash() {
   if (active?.kind === 'obj') active.scroll = [$('objview').scrollTop, 0];
@@ -228,15 +453,18 @@ function stash() {
   active.scroll = [scroller.scrollTop, scroller.scrollLeft];
 }
 
-// Show an edit tab, or the session for null.
-function activate(t) {
+// Show session S's tab t (null: the session itself; S null: home).
+function activate(s, t) {
   stash();
+  current = s;
   active = t;
+  showOutput(s ?? home);
   $('session').hidden = !!t;
   $('editor').hidden = t?.kind !== 'edit';
   $('objview').hidden = t?.kind !== 'obj';
+  $('send').disabled = !s?.connected;
   if (!t) {
-    missed = 0;
+    if (s) s.missed = 0;
     renderTabs();
     input.focus();
     return;
@@ -257,52 +485,67 @@ function activate(t) {
 }
 
 function cycle(step) {
-  const all = [null, ...tabs];
-  activate(all[(all.indexOf(active) + step + all.length) % all.length]);
+  const all = allTabs();
+  if (!all.length) return;
+  const i = all.findIndex(([s, t]) => s === current && t === active);
+  activate(...all[(i + step + all.length) % all.length]);
 }
 
 tiny.api.on('edit', (e) => {
+  const s = bySid(e.sid);
+  if (!s) return;
   const text = e.lines.join('\n');
   // the same verb or text again replaces its tab, unless that has unsent changes
   stash();
-  let t = tabs.find((x) => x.kind === 'edit' && x.reference === e.reference && !dirty(x));
+  let t = s.tabs.find((x) => x.kind === 'edit' && x.reference === e.reference && !dirty(x));
   if (t) {
-    call('closeEdit', { id: t.id });
+    call('closeEdit', { sid: s.sid, id: t.id });
     Object.assign(t, { key: String(e.id), id: e.id, name: e.name, type: e.type, protocol: e.protocol, orig: text, text,
                        sel: [0, 0], scroll: [0, 0], bad: null, result: '' });
     if (t === active) active = null;  // so activate() reloads it
   } else {
-    t = { kind: 'edit', key: String(e.id), id: e.id, name: e.name, reference: e.reference, type: e.type, protocol: e.protocol,
-          orig: text, text, sel: [0, 0], scroll: [0, 0], bad: null };
-    tabs.push(t);
+    t = { kind: 'edit', key: String(e.id), session: s, id: e.id, name: e.name, reference: e.reference, type: e.type,
+          protocol: e.protocol, orig: text, text, sel: [0, 0], scroll: [0, 0], bad: null };
+    s.tabs.push(t);
   }
-  activate(t);
+  activate(s, t);
 });
 
 function closeTab(t) {
   if (dirty(t) && !confirm(`Close ${t.name} without sending your changes?`)) return;
-  const i = tabs.indexOf(t);
-  tabs.splice(i, 1);
-  if (t.kind === 'edit') call('closeEdit', { id: t.id });
+  const s = t.session;
+  const i = s.tabs.indexOf(t);
+  s.tabs.splice(i, 1);
+  if (t.kind === 'edit') call('closeEdit', { sid: s.sid, id: t.id }).catch(() => {});
   if (t === active) {
     active = null;
-    activate(tabs[Math.min(i, tabs.length - 1)] ?? null);
+    activate(s, s.tabs[Math.min(i, s.tabs.length - 1)] ?? null);
   } else {
     renderTabs();
   }
 }
 
-const tabFor = (el) => (el.dataset.key === '' ? null : tabs.find((x) => x.key === el.dataset.key));
+// a tab's element -> [session, tab or null]
+function tabFor(el) {
+  const s = sessions.find((x) => String(x.sid ?? '') === el.dataset.sid);
+  if (!s) return null;
+  return [s, el.dataset.key === '' ? null : s.tabs.find((x) => x.key === el.dataset.key) ?? null];
+}
+function closeEither([s, t]) {
+  if (t) closeTab(t);
+  else closeSession(s);
+}
 $('tabs').addEventListener('click', (ev) => {
   const el = ev.target.closest('.tab');
-  if (!el) return;
-  const t = tabFor(el);
-  if (ev.target.closest('.x')) closeTab(t);
-  else if (t !== active) activate(t);
+  const st = el && tabFor(el);
+  if (!st) return;
+  if (ev.target.closest('.x')) closeEither(st);
+  else if (st[0] !== current || st[1] !== active) activate(...st);
 });
 $('tabs').addEventListener('auxclick', (ev) => {
   const el = ev.target.closest('.tab');
-  if (el && ev.button === 1 && tabFor(el)) closeTab(tabFor(el));
+  const st = el && tabFor(el);
+  if (st && ev.button === 1) closeEither(st);
 });
 
 // --- editor -------------------------------------------------------------
@@ -346,10 +589,10 @@ function showResult(text, cls) {
 
 async function sendEdit() {
   const t = active;
-  if (t?.kind !== 'edit' || !connected) return;
+  if (t?.kind !== 'edit' || !t.session.connected) return;
   stash();
   try {
-    await call('upload', { id: t.id, text: t.text });
+    await call('upload', { sid: t.session.sid, id: t.id, text: t.text });
   } catch (e) {
     t.result = String(e.message ?? e);
     t.resultClass = 'bad';
@@ -400,7 +643,7 @@ const OPENS = /^\s*(if|elseif|else|for|while|fork|try|except|finally)\b/;
 ta.addEventListener('keydown', (ev) => {
   const ctrl = ev.ctrlKey || ev.metaKey;
   if (ctrl || ev.altKey) return;  // tab keys: the document handler
-  if (ev.key === 'Escape') { activate(null); return; }
+  if (ev.key === 'Escape') { activate(current, null); return; }
   const v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
   const lineStart = v.lastIndexOf('\n', s - 1) + 1;
   if (ev.key === 'Tab') {
@@ -446,42 +689,44 @@ $('revert').addEventListener('click', () => {
 $('wrap').addEventListener('change', (ev) => { setWrap(ev.target.checked); ta.focus(); });
 setWrap(wrap);
 
-// Ctrl+S send, Ctrl+W close, Ctrl+Tab / Ctrl+PageUp/Down next and previous
-// tab, Alt+1…9 a tab by number.
+// Ctrl+S send, Ctrl+W close (a session's tab: disconnect), Ctrl+Tab /
+// Ctrl+PageUp/Down next and previous tab, Alt+1…9 a tab by number.
 document.addEventListener('keydown', (ev) => {
   const ctrl = ev.ctrlKey || ev.metaKey;
   if (ctrl && ev.key === 's') { ev.preventDefault(); sendEdit(); }
-  else if (ctrl && ev.key === 'w') { ev.preventDefault(); if (active) closeTab(active); }
+  else if (ctrl && ev.key === 'w') { ev.preventDefault(); if (active) closeTab(active); else if (current) closeSession(current); }
   else if (ctrl && (ev.key === 'Tab' || ev.key === 'PageDown' || ev.key === 'PageUp')) {
     ev.preventDefault();
     cycle(ev.key === 'PageUp' || (ev.key === 'Tab' && ev.shiftKey) ? -1 : 1);
   } else if (ev.altKey && /^[1-9]$/.test(ev.key)) {
-    const all = [null, ...tabs];
+    const all = allTabs();
     const i = Number(ev.key) - 1;
-    if (i < all.length) { ev.preventDefault(); activate(all[i]); }
+    if (i < all.length) { ev.preventDefault(); activate(...all[i]); }
   } else if (!ctrl && !ev.altKey && ev.key.length === 1 && active?.kind !== 'edit'
              && !ev.target.closest?.('input, textarea, select, [contenteditable], dialog')) {
     // typing outside a text box (output, tabs, an object tab): to the input,
     // where the key itself lands, as focus moves before it's typed
-    if (active) activate(null);
+    if (active) activate(current, null);
     input.focus();
   }
 });
 
 // --- object tabs --------------------------------------------------------
 
+// on the session showing
 async function openObject(obj) {
-  if (!connected) return addLines([{ text: 'Not connected.', kind: 'sys' }]);
+  const s = current;
+  if (!s?.connected || !objLinks(s)) return;
   stash();
-  let t = tabs.find((x) => x.kind === 'obj' && x.obj === obj);
+  let t = s.tabs.find((x) => x.kind === 'obj' && x.obj === obj);
   if (!t) {
-    t = { kind: 'obj', key: obj, obj, name: obj, data: null, error: null, scroll: [0, 0] };
-    tabs.push(t);
+    t = { kind: 'obj', key: obj, session: s, obj, name: obj, data: null, error: null, scroll: [0, 0] };
+    s.tabs.push(t);
   }
   t.loading = true;
-  activate(t);
+  activate(s, t);
   try {
-    t.data = await call('inspect', { obj });
+    t.data = await call('inspect', { sid: s.sid, obj });
     t.name = `${plainText(t.data.name)} (${obj})`;
     t.error = null;
   } catch (e) {
@@ -564,9 +809,11 @@ $('objview').addEventListener('click', (ev) => {
   const a = ev.target.closest('a[data-edit]');
   if (!a) return;
   ev.preventDefault();
+  const s = active?.session;
+  if (!s?.connected) return;
   const cmd = '@edit ' + a.dataset.edit;
-  addLines([{ text: cmd, kind: 'me' }]);
-  call('send', { line: cmd });
+  addLines(s, [{ text: cmd, kind: 'me' }]);
+  call('send', { sid: s.sid, line: cmd });
 });
 
 // --- worlds dialog ------------------------------------------------------
@@ -643,11 +890,12 @@ $('worldSave').addEventListener('click', async () => {
 async function start() {
   worlds = await call('worlds');
   renderWorlds();
-  setState(await call('state'));
-  activate(null);
+  // sessions the backend already has (the page was reloaded)
+  for (const x of await call('sessions')) Object.assign(newSession(x.sid, x.world ?? 'Session'), { connected: x.connected, mcp: x.mcp, prog: x.prog });
+  activate(sessions[0] ?? null, null);
   fitInput();
   input.focus();
-  addLines([{ text: 'moocat: pick a world and Connect. On the MOO, @edito +local once, then @edit a verb.', kind: 'sys' }]);
+  addLines(null, [{ text: 'moocat: pick a world and Connect. On the MOO, @edito +local once, then @edit a verb.', kind: 'sys' }]);
 }
 
-start().catch((e) => addLines([{ text: 'start failed: ' + e, kind: 'err' }]));
+start().catch((e) => addLines(null, [{ text: 'start failed: ' + e, kind: 'err' }]));

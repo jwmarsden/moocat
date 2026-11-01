@@ -6,11 +6,13 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>'
 // links and object numbers (#1024, not #-1 or a #fragment in a link)
 const LINK_RE = /\bhttps?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]|(?<![\w#$])#\d+\b/g;
 
-// Plain text -> HTML (escaped) with links and object numbers clickable.
-export function linkText(text) {
+// Plain text -> HTML (escaped) with links and object numbers clickable
+// (objects: false, links only).
+export function linkText(text, { objects = true } = {}) {
   let html = '', last = 0;
   for (const m of text.matchAll(LINK_RE)) {
     const attr = m[0][0] === '#' ? 'data-obj' : 'data-url';
+    if (attr === 'data-obj' && !objects) continue;
     html += esc(text.slice(last, m.index)) + `<a href="#" ${attr}="${esc(m[0])}">${esc(m[0])}</a>`;
     last = m.index + m[0].length;
   }
@@ -62,9 +64,10 @@ export function ansiTags(text) {
 
 // fg and bg are a palette index (0-15, styled by the c<n>/bg<n> classes) or
 // a '#rrggbb' string (an inline style). links: false for text going inside a
-// link of its own (an object's name in an object link).
-export function ansiToHtml(line, { links = true } = {}) {
-  const text = links ? linkify : esc;
+// link of its own (an object's name in an object link); objects: false for
+// web links but object numbers left as text.
+export function ansiToHtml(line, { links = true, objects = true } = {}) {
+  const text = links ? (t) => linkify(t, { objects }) : esc;
   if (!line.includes('\x1b')) return text(line);
   let html = '';
   let fg = null, bg = null, bold = false, under = false, inverse = false, blink = false;

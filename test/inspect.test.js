@@ -35,5 +35,29 @@ eq(d.properties[0], { definer: '#5', name: 'size', owner: '#2', perms: 'rc', val
 eq(d.verbs[0].args, 'this none none', 'verb args');
 eq(d.description, ['A box.'], 'description');
 
+// the programmer probe: a programmer's answer is hidden, with its "=> 0"
+const sent2 = [];
+const ins2 = new Inspector({ send: (l) => sent2.push(l) });
+const yes = ins2.probe();
+const ptag = /MOOCAT:(\w+) prog/.exec(sent2[0])?.[1];
+eq(sent2[0].startsWith(';;notify(player, '), true, 'probe sent as an eval');
+eq(ins2.line(`MOOCAT:${ptag} prog 1`), true, "a programmer's answer is hidden");
+eq(ins2.line('=> 0'), true, 'and its result');
+eq(await yes, true, 'a programmer can program');
+// a non-programmer gets the MOO's huh, hidden: no
+const no = ins2.probe();
+eq(ins2.line("I don't understand that."), true, "the MOO's huh is hidden");
+eq(await no, false, "a guest can't program");
+eq(ins2.line("I don't understand that."), false, 'a huh with no probe out is shown');
+// a wizard who isn't a programmer: player.wizard is 1
+const wiz = ins2.probe();
+const wtag = /MOOCAT:(\w+) prog/.exec(sent2.at(-1))[1];
+ins2.line(`MOOCAT:${wtag} prog 1`);
+eq(await wiz, true, 'a wizard can');
+const zero = ins2.probe();
+const ztag = /MOOCAT:(\w+) prog/.exec(sent2.at(-1))[1];
+ins2.line(`MOOCAT:${ztag} prog 0`);
+eq(await zero, false, 'prog 0: no');
+
 console.log(failed === 0 ? 'all passed' : failed + ' failed');
 tjs.exit(failed ? 1 : 0);

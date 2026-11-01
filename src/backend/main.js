@@ -1,13 +1,13 @@
-// moocat backend for the tinyjs app: the session (core.js) over a TCP or TLS
-// socket, SMud graphics in windows of their own (smud.html) floating over
-// the main one, and the saved worlds in a file.
-import { createSession } from './core.js';
+// moocat backend for the tinyjs app: sessions (sessions.js, core.js) over TCP
+// or TLS sockets, SMud graphics in windows of their own (smud.html) floating
+// over the main one, and the saved worlds in a file.
+import { createSessions } from './sessions.js';
 
 const enc = new TextEncoder();
 
 let app;
 
-const session = createSession({
+const sessions = createSessions({
   push: (event, data) => app.push(event, data),
 
   async connect(world) {
@@ -25,7 +25,7 @@ const session = createSession({
 });
 
 // Closed by the user.
-export const onWindowClosed = (win) => session.onWindowClosed(win);
+export const onWindowClosed = (win) => sessions.onWindowClosed(win);
 
 // --- worlds -------------------------------------------------------------
 
@@ -56,7 +56,7 @@ async function writeWorlds(worlds) {
 // --- api ----------------------------------------------------------------
 
 export const api = {
-  ...session.api,
+  ...sessions.api,
 
   worlds: () => readWorlds(),
 

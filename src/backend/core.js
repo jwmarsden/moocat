@@ -5,7 +5,8 @@
 //   'out'     { lines: [{ text, kind }] }  kind: null | 'sys' | 'err'
 //   'partial' { text }        text after the last newline (a prompt), or ''
 //   'edit'    { id, name, reference, type, protocol, lines }
-//   'state'   { connected, world, mcp }   mcp: 'none' | 'up' | 'edit'
+//   'state'   { connected, world, mcp, prog }   mcp: 'none' | 'up' | 'edit'
+//             prog: the player can program (asked once logged in; see inspect.js)
 // Each SMud graphic the MOO opens gets a window of its own, pushed
 //   'smud'    { msgs }  its lines, parsed (see smud.js)
 //
@@ -15,6 +16,8 @@
 //   openGraphic(win, { title, width, height })
 //   pushGraphic(win, event, data)
 //   closeGraphic(win)
+//   winPrefix                              names this session's windows apart
+//                                          from others' (see sessions.js)
 // }
 import { Mcp } from './mcp.js';
 import { Telnet } from './telnet.js';
@@ -25,10 +28,16 @@ const enc = new TextEncoder();
 
 // A world with SMud graphics on announces the client once the player is
 // logged in: after the login line, or after a connect typed by hand.
-const LOGIN = /^\s*co(?:n(?:n(?:e(?:c(?:t)?)?)?)?)?\s+\S+/i;
+const LOGIN = /^\s*co(?:n(?:n(?:e(?:c(?:t)?)?)?)?)?\s+(\S+)/i;
+// The server's word that a login worked, its connect message: "*** Connected
+// ***" on most MOOs, "*** DON'T PANIC ***" on Rupert. The first such line
+// after a login line counts; then the MOO is asked whether the player can
+// program. Not for guests: they can't, and Rupert asks a guest for a name
+// next, which the question would answer.
+const LOGGED_IN = /^\*\*\* .+ \*\*\*$/;
 
 export function createSession(host) {
-  let conn = null;          // { link, world, hello }
+  let conn = null;          // { link, world, hello, prog, login }  login: a login sent, its *** not seen yet
   const edits = new Map();  // id -> edit, as sent to the page
   let nextEdit = 1;
   let partialTimer = null;
@@ -48,7 +57,7 @@ export function createSession(host) {
 
   function stateOf() {
     return { connected: !!conn, world: conn?.world.name ?? null,
-             mcp: !mcp.key ? 'none' : mcp.canEdit ? 'edit' : 'up' };
+             mcp: !mcp.key ? 'none' : mcp.canEdit ? 'edit' : 'up', prog: !!conn?.prog };
   }
 
   function state() {
@@ -80,6 +89,7 @@ export function createSession(host) {
         if (msg) { smudLine(msg); return; }
       }
       if (inspector.line(text)) return;
+      if (conn?.login && LOGGED_IN.test(text)) afterLogin();
       const r = mcp.line(text);
       if (r === 'hide') return;
       out(r === 'unquote' ? text.slice(3) : text);
@@ -123,9 +133,23 @@ export function createSession(host) {
 
   function afterSend(line) {
     const c = conn;
-    if (!c?.world.smud || c.hello || !LOGIN.test(line)) return;
+    const m = c && LOGIN.exec(line);
+    if (!m) return;
+    c.login = /^guest$/i.test(m[1]) ? 'guest' : 'player';
+    if (!c.world.smud || c.hello) return;
     c.hello = true;
     setTimeout(() => { if (conn === c) sendLine(HELLO); }, 1500);
+  }
+
+  // once the welcome has had a moment to arrive
+  function afterLogin() {
+    const c = conn;
+    const guest = c.login === 'guest';
+    c.login = null;  // this login's: the next *** line isn't
+    if (guest) return;
+    setTimeout(() => {
+      if (conn === c && !c.prog) inspector.probe().then((p) => { if (conn === c) { c.prog = p; state(); } });
+    }, 1000);
   }
 
   // --- SMud graphics windows --------------------------------------------
@@ -140,7 +164,7 @@ export function createSession(host) {
   function smudLine(msg) {
     let g = graphics.get(msg.id);
     if (msg.cmd === 'create' && !g) {
-      const win = 'smud-' + msg.id;
+      const win = (host.winPrefix ?? '') + 'smud-' + msg.id;
       g = { win, ready: false, queue: [msg], timer: null };
       graphics.set(msg.id, g);
       graphicWins.set(win, msg.id);
@@ -208,7 +232,7 @@ export function createSession(host) {
       }
       telnet.buf = [];
       mcp.reset();
-      const c = { link, world, hello: false };
+      const c = { link, world, hello: false, prog: false, login: null };
       conn = c;
       state();
       readLoop(c);
