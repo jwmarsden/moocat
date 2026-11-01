@@ -1,0 +1,11 @@
+Package: moocat
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: amd64
+Installed-Size: @SIZE@
+Depends: libc6 (>= 2.35), libwebkit2gtk-4.1-0, libsoup-3.0-0, libgtk-3-0, libayatana-appindicator3-1, libxtst6, libpipewire-0.3-0, libffi8, libstdc++6, glib-networking, gsettings-desktop-schemas
+Maintainer: jwm <j.w.marsden@gmail.com>
+Description: A MOO client
+ moocat connects to MOOs (text worlds) with ANSI colour, an in-app verb and
+ property editor, an object browser and SMud graphics windows.

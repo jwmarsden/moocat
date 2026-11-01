@@ -1,0 +1,58 @@
+# Exclude Claude's internal runtime data, local memory, caches, and history
+.claude/
+mcp-needs-auth-cache.json
+history.jsonl
+agent-memory
+paste-cache/
+stats-cache.json
+
+# If you use local-only Claude context profiles instead of repository-wide rules
+CLAUDE.local.md
+
+# ==============================================================================
+# 2. TINYJS / JAVASCRIPT LOCAL DEVELOPMENT
+# ==============================================================================
+# Package management and runtime environments
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+
+# Build and token-wasting distribution artifacts
+dist/
+build/
+*.min.js
+*.map
+
+# Logs and system process files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pids
+*.pid
+*.seed
+
+# ==============================================================================
+# 3. ENVIRONMENT SECRETS & CREDENTIAL PROTECTION
+# ==============================================================================
+# Block local credentials from both Git history and Claude context scanning
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+.credentials.json
+
+# ==============================================================================
+# 4. OS & IDE CONFIGURATIONS
+# ==============================================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj

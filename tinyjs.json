@@ -1,0 +1,9 @@
+{
+  "$schema": "https://tinyjs.app/schema/tinyjs.schema.json",
+  "name": "moocat",
+  "title": "moocat",
+  "size": "800x500",
+  "id": "app.moocat",
+  "version": "0.1.0",
+  "minTinyjsVersion": "0.68.0"
+}
