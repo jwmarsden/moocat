@@ -30,6 +30,7 @@
   --ansi9: #ff7a93; --ansi10: #b9f27c; --ansi11: #ff9e64; --ansi12: #7da6ff;
   --ansi13: #bb9af7; --ansi14: #0db9d7; --ansi15: #fff;
   --sel: #364a82;
+  --sel-over: rgba(54, 74, 130, .6);  /* --sel see-through, over the editor's code */
   --hl: #24283b;           /* the active tab, hovered rows, chosen items */
   /* the bars: the header and the footers under the input and the editor */
   --bar: #16161e;
@@ -81,6 +82,7 @@
   --ansi9: #d84a3c; --ansi10: #43a047; --ansi11: #c98a00; --ansi12: #2b7bd6;
   --ansi13: #a55bc9; --ansi14: #0097a7; --ansi15: #0d2533;
   --sel: #F5C88F;
+  --sel-over: rgba(242, 166, 90, .4);
   --hl: #F4D3AA;
   --bar: #1B3A4B;
   --bar-fg: #E8F4F8;
@@ -102,7 +104,8 @@
   color-scheme: light;
 }
 
-:root[data-moo-theme="cata"] ::selection { background: var(--sel); }
+/* the dark text colour when selected: yellow and dim text vanish on the amber */
+:root[data-moo-theme="cata"] ::selection { background: var(--sel); color: var(--fg); }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -250,7 +253,8 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #code.nowrap #stack { width: max-content; min-width: calc(100% - var(--gutter)); }
 #code.nowrap #hl, #code.nowrap #text { white-space: pre; overflow-wrap: normal; }
-#text::selection { background: var(--sel); color: transparent; }
+/* the code shows through #hl underneath, so a solid selection would hide it */
+#text::selection { background: var(--sel-over); color: transparent; }
 #hl .ln { position: relative; }
 #hl .ln::before {
   content: attr(data-n); position: absolute; right: calc(100% + 12px + 10px);

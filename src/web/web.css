@@ -2,6 +2,9 @@
    the worlds are fixed (no Worlds… button), and SMud graphics are panels. */
 .moocat-web { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
 .moocat-web #worlds, .moocat-web #worldsDialog { display: none; }
+/* the site's cube, top left: on the Cata theme only */
+.moocat-web .moo-home { display: none; line-height: 0; margin-right: 2px; }
+[data-moo-theme="cata"] .moocat-web .moo-home { display: inline-flex; }
 
 .smudpanel {
   position: fixed; display: flex; flex-direction: column;

@@ -71,7 +71,7 @@ export async function startWeb({ root, worlds, open, hint = '', themes }) {
       call: async (method, params) => api[method](params ?? {}, null, {}),
       on: (event, fn) => listeners.set(event, [...(listeners.get(event) ?? []), fn]),
     },
-    win: { setTitle: (title) => { document.title = title; } },
+    win: { setTitle: (title) => { document.title = title.replace(/^moocat/, 'Moocat'); } },
     dialog: { alert: async (text) => alert(text) },
     app: { shell: { open: (url) => window.open(url, '_blank', 'noopener') } },
   };
