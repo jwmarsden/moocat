@@ -86,7 +86,7 @@ eq(mooString('say "hi" \\o/'), '"say \\"hi\\" \\\\o/"', 'mooString');
 // ANSI codes: an ESC travels as \e (toliteral()'s raw one strsub()ed), and is written as chr(27)
 eq(parseLiteral('{"\\e[1;35mMoo\\e[0m", "\\\\e /\\\\_/\\\\"}'), ['\x1b[1;35mMoo\x1b[0m', '\\e /\\_/\\'], '\\e is an ESC, \\\\e a backslash and e');
 eq(mooString('\x1b[0m\\'), '"\\e[0m\\\\"', 'mooString writes an ESC as \\e');
-eq(escCode('{"\\e[1mhi\\e[0m", "\\\\e", 3}'), '{"" + chr(27) + "[1mhi" + chr(27) + "[0m", "\\\\e", 3}', 'escCode: \\e as chr(27)');
+eq(escCode('{"\\e[1mhi\\e[0m", "\\\\e", 3}'), '{"" + call_function("chr", 27) + "[1mhi" + call_function("chr", 27) + "[0m", "\\\\e", 3}', 'escCode: \\e as chr(27)');
 eq(escCode(checkLiteral('{ "plain",\n  "a \\"q\\"" }')), '{"plain", "a \\"q\\""}', 'escCode leaves strings without \\e alone');
 
 

@@ -76,19 +76,22 @@ export const mooString = (s) => '"' + String(s).replace(/[\\"]/g, '\\$&').replac
 
 // MOO code for the toliteral() of expr with each ESC as \e. A MOO string has
 // no escape for ESC ("\e" is "e"), a raw one is invisible in a textarea, and
-// the server drops one typed back in. ToastStunt's chr(); without it (LambdaMOO,
+// the server drops one typed back in. ToastStunt's chr(), called by name, as
+// a server without it (LambdaMOO) rejects chr(...) when it compiles the eval,
+// before any catch; by name it's an E_INVARG when it runs, caught: (LambdaMOO,
 // whose strings can't hold an ESC anyway) just the toliteral().
-export const escLiteral = (expr) => `\`strsub(toliteral(${expr}), chr(27), "\\\\e") ! E_VERBNF => toliteral(${expr})'`;
+export const escLiteral = (expr) => `\`strsub(toliteral(${expr}), call_function("chr", 27), "\\\\e") ! ANY => toliteral(${expr})'`;
 
 // A literal (checkLiteral's) as MOO code: each \e in its strings as
-// " + chr(27) + ", the only way to write an ESC.
+// " + call_function("chr", 27) + ", the only way to write an ESC (by name:
+// see escLiteral).
 export function escCode(literal) {
   let out = '', i = 0;
   while (i < literal.length) {
     if (literal[i] !== '"') { out += literal[i++]; continue; }
     let j = i + 1, str = '"';
     while (j < literal.length && literal[j] !== '"') {
-      if (literal[j] === '\\' && literal[j + 1] === 'e') { str += '" + chr(27) + "'; j += 2; continue; }
+      if (literal[j] === '\\' && literal[j + 1] === 'e') { str += '" + call_function("chr", 27) + "'; j += 2; continue; }
       const n = literal[j] === '\\' ? 2 : 1;
       str += literal.slice(j, j + n);
       j += n;
