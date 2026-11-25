@@ -170,11 +170,21 @@ main { flex: 1; display: flex; min-height: 0; }
 #partial:empty { display: none; }
 #inputForm { display: flex; gap: 6px; align-items: end; padding: 6px 8px 8px; background: var(--bar); }
 #sendLine { padding: 7px 18px; }
+#inputWrap { flex: 1; min-width: 0; position: relative; }
 #input {
-  display: block; flex: 1; min-width: 0; resize: none; max-height: 30vh;
+  display: block; width: 100%; resize: none; max-height: 30vh;
   background: var(--input-bg); border: 1px solid var(--bar-line); border-radius: 8px;
   padding: 6px 10px; font: 13px/1.4 var(--mono);
 }
+/* a login line: the password starred in #inputMask, over the see-through text (maskInput) */
+#inputMask {
+  display: none; position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  border: 1px solid transparent; padding: 6px 10px; font: 13px/1.4 var(--mono);
+  color: var(--fg); white-space: pre-wrap; overflow-wrap: break-word;
+}
+#inputWrap.masked #inputMask { display: block; }
+#inputWrap.masked #input { color: transparent; caret-color: var(--fg); }
+#inputWrap.masked #input::selection { background: var(--sel-over); color: transparent; }
 
 /* ANSI */
 .b { font-weight: bold; } .u { text-decoration: underline; }
@@ -264,16 +274,16 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #hl .ln.bad::before { color: var(--red); font-weight: 700; content: "▸" attr(data-n); }
 #hl .ln.bad { background: var(--bad-line); }
-#hl .kw { color: var(--magenta); }
-#hl .str { color: var(--green); }
-#hl .com { color: var(--dim); font-style: italic; }
-#hl .obj { color: var(--cyan); }
-#hl .err { color: var(--red); }
-#hl .num { color: var(--orange); }
-#hl .prop { color: var(--teal); }
-#hl .verb { color: var(--blue); }
-#hl .fn { color: var(--yellow); }
-#hl .op { color: var(--op); }
+:is(#hl, .mooHl) .kw { color: var(--magenta); }
+:is(#hl, .mooHl) .str { color: var(--green); }
+:is(#hl, .mooHl) .com { color: var(--dim); font-style: italic; }
+:is(#hl, .mooHl) .obj { color: var(--cyan); }
+:is(#hl, .mooHl) .err { color: var(--red); }
+:is(#hl, .mooHl) .num { color: var(--orange); }
+:is(#hl, .mooHl) .prop { color: var(--teal); }
+:is(#hl, .mooHl) .verb { color: var(--blue); }
+:is(#hl, .mooHl) .fn { color: var(--yellow); }
+:is(#hl, .mooHl) .op { color: var(--op); }
 
 #editor footer { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--bar-line); background: var(--bar); color: var(--bar-fg); }
 #editor footer .check { display: flex; align-items: center; gap: 4px; color: var(--bar-muted); }
@@ -358,3 +368,39 @@ dialog .row label:first-child { flex: 1; }
 dialog label.check { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 6px; }
 dialog .hint { margin: 0; color: var(--dim); font-size: 11px; }
 dialog footer { display: flex; gap: 6px; margin-top: 14px; }
+
+/* property editor */
+#propDialog { width: min(680px, 92vw); }
+#propDialog h2 { font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
+#propMeta { margin: -6px 0 10px; }
+#propBody textarea, #propBody input, #propBody select, #propBody pre {
+  width: 100%; font: 12.5px var(--mono); color: var(--fg);
+  background: var(--input-bg, var(--bg-dark)); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+}
+#propBody textarea { min-height: 6em; max-height: 60vh; resize: vertical; white-space: pre-wrap; }
+#propBody textarea.big { min-height: 16em; }
+#propBody pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+#propBody label.check { padding: 4px 0; }
+#propBody .objname { margin: 4px 0 0; }
+/* a string's colours (colourPreview): as the output shows them */
+#pvPreview {
+  margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); font: 12.5px/1.35 var(--mono); white-space: pre; overflow: auto; max-height: 40vh;
+}
+/* the literal box: see-through text over its highlighted copy (highlightBox) */
+#propBody .hlbox { position: relative; }
+#propBody .hlbox pre {
+  position: absolute; inset: 0; max-height: none; pointer-events: none;
+  /* both always have a scrollbar, so their lines wrap at the same width */
+  overflow-y: scroll; overflow-wrap: break-word;
+}
+#propBody .hlbox textarea {
+  position: relative; display: block; background: transparent; color: transparent; caret-color: var(--fg);
+  overflow-y: scroll; overflow-wrap: break-word;
+}
+#propBody .hlbox textarea::selection { background: var(--sel-over); color: transparent; }
+#propBody .objname.bad { color: var(--red); }
+#propRaw { margin-top: 8px; }
+#propMsg { margin: 8px 0 0; min-height: 1.2em; font-size: 12px; color: var(--muted); }
+#propMsg.bad { color: var(--red); }
+#propDialog footer .spacer { flex: 1; }

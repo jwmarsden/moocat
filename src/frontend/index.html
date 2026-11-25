@@ -85,6 +85,22 @@
   </form>
 </dialog>
 
+<dialog id="propDialog">
+  <form method="dialog" id="propForm" autocomplete="off">
+    <h2 id="propTitle"></h2>
+    <p id="propMeta" class="hint"></p>
+    <div id="propBody"></div>
+    <label class="check" id="propRaw"><input type="checkbox" id="propLiteral"> Edit as a MOO literal</label>
+    <p id="propMsg"></p>
+    <footer>
+      <button type="button" id="propClear" title="Have no value of its own: inherit the parent's">Clear</button>
+      <span class="spacer"></span>
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button type="button" id="propSave" class="primary">Save</button>
+    </footer>
+  </form>
+</dialog>
+
 <dialog id="askDialog">
   <form method="dialog">
     <h2 id="askTitle"></h2>

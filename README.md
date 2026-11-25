@@ -17,6 +17,20 @@ On the MOO, turn local editing on once: `@edito +local`.
 Clicking a verb in an object tab checks first: if the MOO has no MCP
 simpleedit it offers the MOO's own editor; if your local editing is off it
 offers to turn it on (`@edito +local`) and edit. The answer is kept per session.
+The verb names in `@verbs` output (the core's `;verbs(#5) => {...}` and a
+wizard's table) are links that do the same.
+
+Clicking a property, in an object tab or in `@props` output, opens the
+property editor: the whole value, read fresh, edited by its type (a string, a
+number, an object with its name shown, an error, true/false, a list of strings
+as lines) or as a MOO literal. It saves only if the value hasn't changed since
+it was read, and Clear makes an inherited property inherit again. A string
+property never gets a newline (it would break the database): several lines
+are saved as a list of strings, or joined, as you choose. Raw ANSI codes (an
+ESC, as in a `$login.welcome_message` made with `chr(27)`) show as `\e`, with
+the lines previewed in colour, and are written back with `chr(27)`
+(ToastStunt), as a MOO string has no escape for one; a string's own text `\e`
+would read as one too. Programmers only, as it writes with a hidden `;;` eval.
 
 ## Run
 
@@ -31,7 +45,8 @@ tinyjs itself is packaged in ~/nix-config (nix/tinyjs.nix).
   MOOs (or the same one twice) can be open at once. The tab is named after
   the world, with a dot (green when connected; hover for MCP) and a count of
   lines that came in while you were elsewhere. A session whose connection
-  drops stays, grey: Connect with its world picked connects it again.
+  drops stays, grey: Connect with its world picked connects it again, as do
+  the Reconnect link on its "Disconnected" line and Enter on an empty input.
   Closing its tab disconnects.
 - Commands, typed in the input and never sent to the MOO: `/help` lists
   them. `/close` (this session; the last one only disconnects),
@@ -65,7 +80,8 @@ tinyjs itself is packaged in ~/nix-config (nix/tinyjs.nix).
 - Input: Enter or Send sends, Shift+Enter for several lines, Up/Down for
   history, PageUp/PageDown scroll the output. The output follows new lines
   unless you scroll up; then a button counts what's below. `connect name
-  password` is echoed with the password starred and never saved in history.
+  password` is starred as you type it (each character shows for half a second
+  first), echoed with the password starred and never saved in history.
 - Editor: Ctrl+S send, Tab/Shift+Tab indent, Esc back to the session, Wrap
   toggles word wrap. Re-editing the same verb replaces its tab unless it has
   unsent changes (●). Revert goes back to the MOO's text. After a send the

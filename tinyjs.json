@@ -4,6 +4,6 @@
   "title": "moocat",
   "size": "800x500",
   "id": "app.moocat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minTinyjsVersion": "0.68.0"
 }

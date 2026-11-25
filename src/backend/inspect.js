@@ -18,7 +18,9 @@ const HUH = /^I don't understand that\.?$/;
 
 // A MOO literal (toliteral() output) -> JS: strings, numbers, lists as
 // arrays, objects as { obj: '#n' }, errors as { err: 'E_X' }. Maps
-// ([k -> v], ToastStunt) become arrays of [k, v] pairs.
+// ([k -> v], ToastStunt) become arrays of [k, v] pairs. \e in a string is
+// an escape (ESC, chr(27)): toliteral() passes one through raw, which
+// escLiteral() turns into \e for the trip (see there).
 export function parseLiteral(s) {
   let i = 0;
   const ws = () => { while (s[i] === ' ') i++; };
@@ -29,6 +31,7 @@ export function parseLiteral(s) {
       let out = '';
       i++;
       while (i < s.length && s[i] !== '"') {
+        if (s[i] === '\\' && s[i + 1] === 'e') { out += '\x1b'; i += 2; continue; }
         if (s[i] === '\\') i++;
         out += s[i++];
       }
@@ -68,6 +71,87 @@ export function parseLiteral(s) {
   return v;
 }
 
+// A string as a MOO literal (an ESC as \e, as parseLiteral reads it).
+export const mooString = (s) => '"' + String(s).replace(/[\\"]/g, '\\$&').replaceAll('\x1b', '\\e') + '"';
+
+// MOO code for the toliteral() of expr with each ESC as \e. A MOO string has
+// no escape for ESC ("\e" is "e"), a raw one is invisible in a textarea, and
+// the server drops one typed back in. ToastStunt's chr(); without it (LambdaMOO,
+// whose strings can't hold an ESC anyway) just the toliteral().
+export const escLiteral = (expr) => `\`strsub(toliteral(${expr}), chr(27), "\\\\e") ! E_VERBNF => toliteral(${expr})'`;
+
+// A literal (checkLiteral's) as MOO code: each \e in its strings as
+// " + chr(27) + ", the only way to write an ESC.
+export function escCode(literal) {
+  let out = '', i = 0;
+  while (i < literal.length) {
+    if (literal[i] !== '"') { out += literal[i++]; continue; }
+    let j = i + 1, str = '"';
+    while (j < literal.length && literal[j] !== '"') {
+      if (literal[j] === '\\' && literal[j + 1] === 'e') { str += '" + chr(27) + "'; j += 2; continue; }
+      const n = literal[j] === '\\' ? 2 : 1;
+      str += literal.slice(j, j + n);
+      j += n;
+    }
+    out += str + '"';
+    i = j + 1;
+  }
+  return out;
+}
+
+// An object as the editor names it: #123 or a $name, nothing else (it goes
+// into an eval).
+function checkObj(obj) {
+  if (!/^(#-?\d+|\$\w+)$/.test(obj)) throw new Error('not an object: ' + obj);
+  return obj;
+}
+
+// A MOO literal as typed (over several lines, say) -> one line, the spaces
+// between its parts squeezed and its strings untouched; throws if it isn't a
+// literal (parseLiteral's), so nothing else can ride into the eval. Newlines
+// inside strings aren't allowed: a string holding one breaks the database.
+export function checkLiteral(text) {
+  let out = '', i = 0, space = false;
+  const s = String(text).trim();
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== '"') {
+        if (s[j] === '\n') throw new Error('a newline inside a string');
+        j += s[j] === '\\' ? 2 : 1;
+      }
+      if (space && /[,>]$/.test(out)) out += ' ';
+      out += s.slice(i, j + 1);
+      i = j + 1;
+      space = false;
+    } else if (/\s/.test(c)) {
+      space = true;
+      i++;
+    } else {
+      // a space kept only where it may matter: after a comma or ->, and between words
+      if (space && out && (/[,>]$/.test(out) || (/\w$/.test(out) && /\w/.test(c)))) out += ' ';
+      out += c;
+      i++;
+      space = false;
+    }
+  }
+  parseLiteral(out);
+  return out;
+}
+
+// A literal's type as typeof() would give it, from how it's written.
+export function literalType(literal) {
+  const c = literal[0];
+  if (c === '"') return 2;
+  if (c === '#') return 1;
+  if (c === '{') return 4;
+  if (c === '[') return 10;
+  if (c === 'E') return 3;
+  if (c === 't' || c === 'f') return 14;
+  return /[.eE]/.test(literal) ? 9 : 0;
+}
+
 // The eval, one line. Values are sent as toliteral() strings cut at 300
 // characters: they're for reading, not parsing. Long objects suspend now and
 // then rather than run out of ticks.
@@ -92,7 +176,8 @@ export function program(obj, tag) {
     ' else for n in (ps)',
     '  ticks_left() < 4000 && suspend(0);',
     '  i = `property_info(o, n) ! ANY => {0, "?"}\';',
-    '  s = toliteral(`o.(n) ! ANY\'); length(s) > 300 && (s = s[1..300] + "...");',
+    // an ESC as \e, not raw: it would colour the object tab
+    `  s = ${escLiteral("`o.(n) ! ANY'")}; length(s) > 300 && (s = s[1..300] + "...");`,
     `  ${say('prop', '{x, n, i[1], i[2], s}')}`,
     ' endfor endif',
     ' vs = `verbs(x) ! ANY\';',
@@ -134,6 +219,45 @@ export class Inspector {
     }));
     this.queue = next;
     return next;
+  }
+
+  // A property, all of it, for the property editor:
+  //   { literal, value, type, owner, perms, clear, here, player, wizard }
+  // literal: its toliteral() (exact, floats and all), value: that parsed
+  // (parseLiteral's; null if it won't); type: typeof() (INT 0,
+  // OBJ 1, STR 2, ERR 3, LIST 4, FLOAT 9, MAP 10, ANON 12, WAIF 13, BOOL 14);
+  // clear: it has no value of its own (an inherited one shows); here: obj
+  // defines it, so there's nothing to clear to. { err } if it can't be read,
+  // null for no answer.
+  async readProp(obj, prop) {
+    const [o, p] = [checkObj(obj), mooString(prop)];
+    const v = await this.ask(`{${escLiteral(`${o}.(${p})`)}, typeof(${o}.(${p})), property_info(${o}, ${p}), ` +
+                             `is_clear_property(${o}, ${p}), \`${p} in properties(${o}) ! ANY => 0', player, player.wizard}`);
+    if (!Array.isArray(v)) return v;
+    const [literal, type, [owner, perms], clear, here, player, wizard] = v;
+    let value = null;  // (a waif's literal is no literal)
+    try { value = parseLiteral(literal); } catch {}
+    return { literal, value, type, owner: owner.obj, perms, clear: !!clear, here: !!here, player: player.obj,
+             wizard: !!wizard };
+  }
+
+  // Sets a property to a MOO literal (one checkLiteral passed), or clears it
+  // (literal null), if it's still what was read (expect, its literal then):
+  // { ok: true } or { ok: false, literal } (what it is now), or { err }.
+  async writeProp(obj, prop, literal, expect) {
+    const [o, p] = [checkObj(obj), mooString(prop)];
+    const set = literal == null ? `clear_property(${o}, ${p})` : `${o}.(${p}) = ${escCode(checkLiteral(literal))}`;
+    const now = escLiteral(`${o}.(${p})`);
+    const v = await this.ask(`equal(${now}, ${mooString(expect)}) ? {1, ${set}} | {0, ${now}}`);
+    if (!Array.isArray(v)) return v ?? { err: 'no answer from the MOO' };
+    return v[0] ? { ok: true } : { ok: false, literal: v[1] };
+  }
+
+  // An object's name, for the editor's #123 box: { valid, name }.
+  async objName(obj) {
+    const o = checkObj(obj);
+    const v = await this.ask(`{valid(${o}), \`${o}.name ! ANY => ""'}`);
+    return Array.isArray(v) ? { valid: !!v[0], name: v[1] } : { valid: false, name: '' };
   }
 
   // Whether the player can program (a programmer or a wizard).

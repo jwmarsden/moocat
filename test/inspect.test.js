@@ -1,5 +1,5 @@
 // tjs run test/inspect.test.js  — the MOO literal parser and the reply lines
-import { parseLiteral, Inspector } from '../src/backend/inspect.js';
+import { parseLiteral, Inspector, checkLiteral, literalType, mooString, escCode } from '../src/backend/inspect.js';
 
 let failed = 0;
 const eq = (got, want, what) => {
@@ -71,6 +71,24 @@ const t2 = /MOOCAT:(\w+) val/.exec(sent2.at(-1))[1];
 eq(t2 !== t1, true, 'the second question waited for the first');
 ins2.line(`MOOCAT:${t2} val "rah"`);
 eq(await q2, 'rah', 'a string');
+
+// the property editor's literals: squeezed onto one line, strings untouched,
+// anything but a literal refused (it goes into an eval)
+eq(checkLiteral('{\n  {1, 2},\n  "a  b" ,\n  ["k" -> #1]\n}'), '{{1, 2}, "a  b", ["k"-> #1]}', 'a literal over lines');
+eq(checkLiteral(' "x \\"y\\"" '), '"x \\"y\\""', 'a string with quotes');
+for (const bad of ['{1, 2', '1); @quit', '"a\nb"', 'player', '{1} + {2}']) {
+  let refused = false;
+  try { checkLiteral(bad); } catch { refused = true; }
+  eq(refused, true, `refused ${JSON.stringify(bad)}`);
+}
+eq(['"s"', '#3', '{}', '[]', 'E_PERM', 'true', '1.5', '1e+20', '-4'].map(literalType), [2, 1, 4, 10, 3, 14, 9, 9, 0], 'literal types');
+eq(mooString('say "hi" \\o/'), '"say \\"hi\\" \\\\o/"', 'mooString');
+// ANSI codes: an ESC travels as \e (toliteral()'s raw one strsub()ed), and is written as chr(27)
+eq(parseLiteral('{"\\e[1;35mMoo\\e[0m", "\\\\e /\\\\_/\\\\"}'), ['\x1b[1;35mMoo\x1b[0m', '\\e /\\_/\\'], '\\e is an ESC, \\\\e a backslash and e');
+eq(mooString('\x1b[0m\\'), '"\\e[0m\\\\"', 'mooString writes an ESC as \\e');
+eq(escCode('{"\\e[1mhi\\e[0m", "\\\\e", 3}'), '{"" + chr(27) + "[1mhi" + chr(27) + "[0m", "\\\\e", 3}', 'escCode: \\e as chr(27)');
+eq(escCode(checkLiteral('{ "plain",\n  "a \\"q\\"" }')), '{"plain", "a \\"q\\""}', 'escCode leaves strings without \\e alone');
+
 
 console.log(failed === 0 ? 'all passed' : failed + ' failed');
 tjs.exit(failed ? 1 : 0);
