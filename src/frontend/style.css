@@ -187,7 +187,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #inputWrap.masked #input::selection { background: var(--sel-over); color: transparent; }
 
 /* ANSI */
-.b { font-weight: bold; } .u { text-decoration: underline; }
+.b { font-weight: bold; } .i { font-style: italic; }
+.u { text-decoration-line: underline; } .s { text-decoration-line: line-through; } .u.s { text-decoration-line: underline line-through; }
 .blink { animation: moo-blink 1s steps(1) infinite; }
 @keyframes moo-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .blink { animation: none; text-decoration: underline dotted; } }

@@ -89,10 +89,26 @@ out.addEventListener('scroll', () => {
 new ResizeObserver(() => { if (shown().follow) out.scrollTop = out.scrollHeight; }).observe(out);
 $('jump').addEventListener('click', toBottom);
 
+// The bell (^G in a line): a short tone, at most one per batch of lines.
+let audio = null;
+function beep() {
+  try {
+    audio ??= new AudioContext();
+    const osc = audio.createOscillator(), gain = audio.createGain();
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.15);
+    osc.connect(gain).connect(audio.destination);
+    osc.start();
+    osc.stop(audio.currentTime + 0.15);
+  } catch {}
+}
+
 // Lines to a session (or to home, before any). Object numbers are links
 // only once the MOO has said the player can program (core.js asks).
 function addLines(s, lines) {
   s ??= home;
+  if (lines.some(({ text, kind }) => kind !== 'me' && text.includes('\x07'))) beep();
   const frag = document.createDocumentFragment();
   for (const { text, kind } of lines) {
     const div = document.createElement('div');

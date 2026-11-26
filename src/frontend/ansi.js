@@ -1,6 +1,7 @@
 // A line of MOO output -> HTML (escaped): ANSI SGR colours (16, 256, 24-bit
-// and SMud's true colour), backgrounds, bold, underline and reset; links and
-// object numbers made clickable. Other escape sequences are dropped.
+// and SMud's true colour), backgrounds, bold, italic, underline, blink,
+// inverse, strikethrough and reset; links and object numbers made clickable.
+// Other escape sequences, and the bell, are dropped.
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // links and object numbers (#1024, not #-1 or a #fragment in a link)
@@ -68,9 +69,10 @@ export function ansiTags(text) {
 // web links but object numbers left as text.
 export function ansiToHtml(line, { links = true, objects = true } = {}) {
   const text = links ? (t) => linkify(t, { objects }) : esc;
+  line = line.replaceAll('\x07', '');
   if (!line.includes('\x1b')) return text(line);
   let html = '';
-  let fg = null, bg = null, bold = false, under = false, inverse = false, blink = false;
+  let fg = null, basic = false, bg = null, bold = false, italic = false, under = false, inverse = false, blink = false, strike = false;
   const parts = line.split(/(\x1b\[[0-9;]*[A-Za-z])/);
   for (const p of parts) {
     if (p.startsWith('\x1b[')) {
@@ -78,18 +80,22 @@ export function ansiToHtml(line, { links = true, objects = true } = {}) {
       const codes = p.slice(2, -1).split(';').map((n) => Number(n || 0));
       for (let i = 0; i < codes.length; i++) {
         const c = codes[i];
-        if (c === 0) { fg = bg = null; bold = under = inverse = blink = false; }
+        if (c === 0) { fg = bg = null; bold = italic = under = inverse = blink = strike = false; }
         else if (c === 1) bold = true;
         else if (c === 22) bold = false;
+        else if (c === 3) italic = true;
+        else if (c === 23) italic = false;
+        else if (c === 9) strike = true;
+        else if (c === 29) strike = false;
         else if (c === 4) under = true;
         else if (c === 24) under = false;
         else if (c === 5 || c === 6) blink = true;
         else if (c === 25) blink = false;
         else if (c === 7) inverse = true;
         else if (c === 27) inverse = false;
-        else if (c >= 30 && c <= 37) fg = c - 30;
-        else if (c >= 90 && c <= 97) fg = c - 90 + 8;
-        else if (c === 39) fg = null;
+        else if (c >= 30 && c <= 37) { fg = c - 30; basic = true; }
+        else if (c >= 90 && c <= 97) { fg = c - 90 + 8; basic = false; }
+        else if (c === 39) { fg = null; basic = false; }
         else if (c >= 40 && c <= 47) bg = c - 40;
         else if (c >= 100 && c <= 107) bg = c - 100 + 8;
         else if (c === 49) bg = null;
@@ -98,17 +104,20 @@ export function ansiToHtml(line, { links = true, objects = true } = {}) {
           let col = null;
           if (codes[i + 1] === 5) { const n = codes[i + 2] ?? 0; col = n < 16 ? n : xterm256(n); i += 2; }
           else if (codes[i + 1] === 2) { col = rgb(codes[i + 2] ?? 0, codes[i + 3] ?? 0, codes[i + 4] ?? 0); i += 4; }
-          if (c === 38) fg = col; else bg = col;
+          if (c === 38) { fg = col; basic = false; } else bg = col;
         }
         else if (c >= SMUD_BG && c < SMUD_BG + 0x1000000) bg = '#' + (c - SMUD_BG).toString(16).padStart(6, '0');
-        else if (c >= SMUD_FG && c < SMUD_FG + 0x1000000) fg = '#' + (c - SMUD_FG).toString(16).padStart(6, '0');
+        else if (c >= SMUD_FG && c < SMUD_FG + 0x1000000) basic = false, fg = '#' + (c - SMUD_FG).toString(16).padStart(6, '0');
       }
       continue;
     }
     if (!p) continue;
-    // inverse swaps the colours, the default ones included
-    const [f, k] = inverse ? [bg ?? 'var(--bg)', fg ?? 'var(--fg)'] : [fg, bg];
-    const cls = [typeof f === 'number' && `c${f}`, typeof k === 'number' && `bg${k}`, bold && 'b', under && 'u', blink && 'blink'].filter(Boolean);
+    // bold brightens the eight basic colours (30-37), as terminals do (bold
+    // black is gray); inverse swaps the colours, the default ones included
+    const bright = bold && basic && fg != null ? fg + 8 : fg;
+    const [f, k] = inverse ? [bg ?? 'var(--bg)', bright ?? 'var(--fg)'] : [bright, bg];
+    const cls = [typeof f === 'number' && `c${f}`, typeof k === 'number' && `bg${k}`, bold && 'b', italic && 'i',
+                 under && 'u', strike && 's', blink && 'blink'].filter(Boolean);
     const style = [typeof f === 'string' && `color:${f}`, typeof k === 'string' && `background:${k}`].filter(Boolean);
     html += cls.length || style.length
       ? `<span${cls.length ? ` class="${cls.join(' ')}"` : ''}${style.length ? ` style="${style.join(';')}"` : ''}>${text(p)}</span>`

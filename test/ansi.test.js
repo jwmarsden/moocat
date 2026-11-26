@@ -5,7 +5,7 @@ let failed = 0;
 const eq = (got, want, what) => { if (got !== want) { failed++; console.log(`FAIL ${what}:\n  got  ${got}\n  want ${want}`); } };
 eq(ansiToHtml('\x1b[33554435;16777450mS\x1b[0m'), '<span style="color:#0000ea;background:#000003">S</span>', 'SMud fg + bg');
 eq(ansiToHtml('\x1b[32112640mR'), '<span style="color:#ea0000">R</span>', 'SMud fg alone');
-eq(ansiToHtml('\x1b[1;31mx\x1b[44my\x1b[0mz'), '<span class="c1 b">x</span><span class="c1 bg4 b">y</span>z', '16 colours + bg');
+eq(ansiToHtml('\x1b[1;31mx\x1b[44my\x1b[0mz'), '<span class="c9 b">x</span><span class="c9 bg4 b">y</span>z', '16 colours + bg');
 eq(ansiToHtml('\x1b[38;5;196ma\x1b[38;2;1;2;3;48;5;240mb'), '<span style="color:#ff0000">a</span><span style="color:#010203;background:#585858">b</span>', '256 and 24-bit');
 eq(ansiToHtml('\x1b[2Jplain #12'), 'plain <a href="#" data-obj="#12">#12</a>', 'other escapes dropped, objects linked');
 eq(ansiToHtml('<b>&'), '&lt;b&gt;&amp;', 'escaped');
@@ -15,7 +15,7 @@ eq(tags('[red]Danger[normal] ahead'), '<span class="c1">Danger</span> ahead', 't
 eq(tags('[bold][b:blue]x[unbold]y'), '<span class="bg4 b">x</span><span class="bg4">y</span>', 'bold, background');
 eq(tags('[:196]a[b::021]b'), '<span style="color:#ff0000">a</span><span style="color:#ff0000;background:#0000ff">b</span>', 'xterm 256 tags');
 eq(tags('[255:128:0]o[b:0:0:64]p'), '<span style="color:#ff8000">o</span><span style="color:#ff8000;background:#000040">p</span>', '24-bit tags');
-eq(tags('[gray]g[null]'), '<span class="c0 b">g</span>', 'gray is bold black; null vanishes');
+eq(tags('[gray]g[null]'), '<span class="c8 b">g</span>', 'gray is bold black, so bright black; null vanishes');
 eq(tags('[b:black] [:5] [rose] [1]'), '[b:black] [:5] [rose] [1]', 'not tags: left alone');
 eq(/^<span class="c\d( b)?">z<\/span>$/.test(tags('[random]z')), true, 'random is a colour');
 eq(tags('[red][b:blue][inverse]x'), '<span class="c4 bg1">x</span>', 'inverse swaps palette colours');
@@ -24,6 +24,10 @@ eq(tags('[255:0:0][inverse]x'), '<span style="color:var(--bg);background:#ff0000
 eq(ansiToHtml('\x1b[7mx\x1b[27my'), '<span style="color:var(--bg);background:var(--fg)">x</span>y', 'inverse off (27)');
 eq(tags('[blink]b[unblink]c'), '<span class="blink">b</span>c', 'blink and unblink');
 eq(ansiToHtml('\x1b[5;31mb\x1b[0m'), '<span class="c1 blink">b</span>', 'blink escape');
+eq(ansiToHtml('\x1b[3mi\x1b[23m\x1b[9ms\x1b[4mu\x1b[29mv\x1b[0m'), '<span class="i">i</span><span class="s">s</span><span class="u s">u</span><span class="u">v</span>', 'italic, strike, underline');
+eq(ansiToHtml('\x1b[1m\x1b[36mb\x1b[22m\x1b[36mn'), '<span class="c14 b">b</span><span class="c6">n</span>', 'bold brightens, unbold dims');
+eq(ansiToHtml('\x1b[1;38;5;3mx'), '<span class="c3 b">x</span>', 'bold leaves 256 colours alone');
+eq(ansiToHtml('\x07beep'), 'beep', 'bell dropped');
 eq(colourText('[green]Bob #12', { links: false }), '<span class="c2">Bob #12</span>', 'no links inside a link');
 eq(colourText('[green]Bob #12'), '<span class="c2">Bob <a href="#" data-obj="#12">#12</a></span>', 'links by default');
 eq(ansiToHtml('see #12 at https://x.org', { objects: false }), 'see #12 at <a href="#" data-url="https://x.org">https://x.org</a>',
